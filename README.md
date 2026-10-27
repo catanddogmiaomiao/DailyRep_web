@@ -20,7 +20,7 @@ npx wrangler login
 npm run cf:deploy
 ```
 
-部署脚本复用或创建 `dailyrep` D1 数据库、`dailyrep-photos` R2 桶，更新数据库绑定、应用版本化迁移，生成忽略 Git 的 `.dev.vars` 邀请码，再部署前端与接口并验证 `/api/health`。需在 Cloudflare 账号启用 R2。多个账号时须在 `wrangler.jsonc` 指定准确 `account_id`。
+部署脚本复用或创建 `dailyrep` D1 数据库、`dailyrep-photos` R2 桶，更新数据库绑定、应用版本化迁移，生成12位随机邀请码并保存到忽略 Git 的 `.dev.vars`，再部署前端与接口并验证 `/api/health`。需在 Cloudflare 账号启用 R2。多个账号时须在 `wrangler.jsonc` 指定准确 `account_id`。
 
 打开命令输出的 HTTPS 地址，点击“首次使用？创建个人账号”，输入自己的邮箱、至少8位密码和 `.dev.vars` 中的 `SETUP_CODE`。邀请码通过 Worker secret 上传，前端不包含该值。创建唯一账号后其他注册请求返回409。密码使用随机盐和 PBKDF2-SHA256（100000次），会话仅以 SHA256 哈希存储，7天过期。浏览器使用 HttpOnly / SameSite=Strict / HTTPS Secure Cookie，iPhone 使用 SecureStore 中的 Bearer Token。
 

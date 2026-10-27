@@ -38,7 +38,7 @@ const buckets=run(['r2','bucket','list'],true);
 const bucket=config.r2_buckets[0].bucket_name;
 if(!buckets.split('\n').some(line=>line.trim().match(/^name:\s*(.*)$/)?.[1]===bucket)) run(['r2','bucket','create',bucket,'--location','apac']);
 run(['d1','migrations','apply',binding.database_name,'--remote']);
-if(!existsSync('.dev.vars')) writeFileSync('.dev.vars','SETUP_CODE='+randomBytes(16).toString('hex')+'\n',{mode:0o600});
+if(!existsSync('.dev.vars')) writeFileSync('.dev.vars','SETUP_CODE='+randomBytes(6).toString('hex')+'\n',{mode:0o600});
 console.log('Deploying website and API…');
 const output=run(['deploy','--secrets-file','.dev.vars','--keep-vars']);
 const url=output.match(/https:\/\/[^\s]+\.workers\.dev/)?.[0];
