@@ -18,8 +18,8 @@ db.exec(
 if (!db.prepare("SELECT id FROM account").get()) {
   const email = process.env.OWNER_EMAIL?.trim().toLowerCase(),
     password = process.env.OWNER_PASSWORD;
-  if (!email || !password || password.length < 12)
-    throw new Error("首次启动须设置 OWNER_EMAIL 和至少12位的 OWNER_PASSWORD");
+  if (!email || !password || password.length < 8)
+    throw new Error("首次启动须设置 OWNER_EMAIL 和至少8位的 OWNER_PASSWORD");
   const salt = randomBytes(16).toString("hex");
   db.prepare("INSERT INTO account VALUES (1,?,?,?)").run(
     email,

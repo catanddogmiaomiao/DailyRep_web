@@ -6,7 +6,7 @@ Base: `/api`. JSON responses. Error bodies: `{ "error": "…" }`. Login via emai
 | --- | --- | --- |
 | GET | `/health` | Database connectivity check → `{ok:true}` |
 | GET | `/setup` | `{registrationAvailable}`; no secret disclosure |
-| POST | `/register` | JSON `{email,password,setupCode}` → session (201); first owner only, valid invitation, password ≥12 characters; later registrations409 |
+| POST | `/register` | JSON `{email,password,setupCode}` → session (201); first owner only, valid invitation, password ≥8 characters; later registrations409 |
 | POST | `/login` | JSON `{email,password}` → `{token,email}`; sets browser cookie |
 | GET | `/me` | `{email}` |
 | POST | `/logout` | 204 |

@@ -22,12 +22,12 @@ test('Cloudflare runtime: single-owner signup, auth, R2 photos, records, real XL
       return server.fetch('https://dailyrep.test/api'+route, {...init, headers:{...init.headers,...(token?{Authorization:'Bearer '+token}:{})}});
     };
     const post = (route, data, headers={}) => call(route,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(data)});
-    const owner = {email:'owner@example.com',password:'test-password-1234',setupCode:'local-test-invitation'};
+    const owner = {email:'owner@example.com',password:'Test1234',setupCode:'local-test-invitation'};
     assert.equal((await call('/records')).status,401);
     assert.equal((await call('/export')).status,401);
     assert.equal((await (await call('/setup')).json()).registrationAvailable,true);
     assert.equal((await post('/register',{...owner,setupCode:'wrong'})).status,403);
-    assert.equal((await post('/register',{...owner,password:'short'})).status,400);
+    assert.equal((await post('/register',{...owner,password:'Test123'})).status,400);
     assert.equal((await post('/register',owner,{Origin:'https://evil.test'})).status,403);
     const signup = await post('/register',owner);
     assert.equal(signup.status,201,await signup.clone().text());

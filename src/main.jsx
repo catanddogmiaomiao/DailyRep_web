@@ -612,10 +612,10 @@ function Login({ onLogin, error }) {
             name="password"
             type="password"
             autoComplete={register ? 'new-password' : 'current-password'}
-            minLength={register ? 12 : undefined}
+            minLength={register ? 8 : undefined}
             maxLength={1024}
             required
-            placeholder={register ? '设置密码，至少12位' : '输入密码'}
+            placeholder={register ? '设置密码，至少8位' : '输入密码'}
           />
         </label>
         {register && <>

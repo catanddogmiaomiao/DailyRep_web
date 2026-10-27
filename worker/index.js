@@ -71,7 +71,7 @@ async function api(request, env) {
       if (account) fail('个人账号已创建，请登录', 409);
       if (!env.SETUP_CODE) fail('尚未开启首次注册，请联系服务所有者', 403);
       if (typeof data.setupCode !== 'string' || !equal(await digest(data.setupCode), await digest(env.SETUP_CODE))) fail('首次注册邀请码不正确', 403);
-      if (data.password.length < 12) fail('密码至少需要12位', 400);
+      if (data.password.length < 8) fail('密码至少需要8位', 400);
       const salt = random(16), hash = await passwordHash(data.password, salt);
       const inserted = await env.DB.prepare('INSERT OR IGNORE INTO account VALUES (1,?,?,?)').bind(data.email, salt, hash).run();
       if (!inserted.meta.changes) fail('个人账号已创建，请登录', 409);

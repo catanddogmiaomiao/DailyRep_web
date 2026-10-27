@@ -22,7 +22,7 @@ npm run cf:deploy
 
 部署脚本复用或创建 `dailyrep` D1 数据库、`dailyrep-photos` R2 桶，更新数据库绑定、应用版本化迁移，生成忽略 Git 的 `.dev.vars` 邀请码，再部署前端与接口并验证 `/api/health`。需在 Cloudflare 账号启用 R2。多个账号时须在 `wrangler.jsonc` 指定准确 `account_id`。
 
-打开命令输出的 HTTPS 地址，点击“首次使用？创建个人账号”，输入自己的邮箱、至少12位密码和 `.dev.vars` 中的 `SETUP_CODE`。邀请码通过 Worker secret 上传，前端不包含该值。创建唯一账号后其他注册请求返回409。密码使用随机盐和 PBKDF2-SHA256（100000次），会话仅以 SHA256 哈希存储，7天过期。浏览器使用 HttpOnly / SameSite=Strict / HTTPS Secure Cookie，iPhone 使用 SecureStore 中的 Bearer Token。
+打开命令输出的 HTTPS 地址，点击“首次使用？创建个人账号”，输入自己的邮箱、至少8位密码和 `.dev.vars` 中的 `SETUP_CODE`。邀请码通过 Worker secret 上传，前端不包含该值。创建唯一账号后其他注册请求返回409。密码使用随机盐和 PBKDF2-SHA256（100000次），会话仅以 SHA256 哈希存储，7天过期。浏览器使用 HttpOnly / SameSite=Strict / HTTPS Secure Cookie，iPhone 使用 SecureStore 中的 Bearer Token。
 
 将同一 HTTPS 地址填写到 App `.env` 的 `EXPO_PUBLIC_API_URL`，不含 `/api`，然后重新打包安装。不要只把 `dist/` 发布到静态 Pages：必须同时部署 Worker、D1、R2。
 
@@ -37,7 +37,7 @@ npm run cf:deploy
 ```sh
 npm ci
 cp .env.example .env
-# 编辑 .env，设置 OWNER_EMAIL 和至少12位的 OWNER_PASSWORD
+# 编辑 .env，设置 OWNER_EMAIL 和至少8位的 OWNER_PASSWORD
 npm run server
 # 另一个终端
 npm run dev
