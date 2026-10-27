@@ -41,7 +41,8 @@ test('Cloudflare runtime: single-owner signup, auth, R2 photos, records, real XL
     assert.notEqual(session.token,token,'stored session is a hash, not the bearer token');
     const form = new FormData();
     for (const [key,value] of Object.entries({sport:'running',value:'7.25',duration:'2520',occurredAt:'2025-10-22T07:30:00+08:00'})) form.set(key,value);
-    form.set('photo',new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB9kAAAAASUVORK5CYII=','base64')],{type:'image/png'}),'photo.png');
+    // Regression: older iPhone builds labeled a real PNG as checkin.jpg.
+    form.set('photo',new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB9kAAAAASUVORK5CYII=','base64')],{type:'image/jpeg'}),'checkin.jpg');
     const created = await call('/records',{method:'POST',body:form});
     assert.equal(created.status,201,await created.clone().text());
     const record = await created.json();

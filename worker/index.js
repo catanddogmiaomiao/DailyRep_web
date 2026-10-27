@@ -114,7 +114,9 @@ async function api(request, env) {
     if (file && typeof file !== 'string' && file.size) {
       if (file.size > MAX_PHOTO) fail('照片不能超过8MB', 400);
       const bytes = new Uint8Array(await file.arrayBuffer()), type = imageType(bytes);
-      if (!type || type !== file.type) fail('请选择有效的 JPEG、PNG 或 WebP 图片', 400);
+      // Mobile multipart MIME labels can be inaccurate. The actual bytes are
+      // authoritative; save the detected type instead of trusting the label.
+      if (!type) fail('暂不支持此照片格式，请更新 App 后重新选择照片（会自动转换为 JPEG）', 400);
       photo = random(16);
       await env.PHOTOS.put(photo, bytes, {httpMetadata: {contentType: type}});
     }

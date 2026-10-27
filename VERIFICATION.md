@@ -27,3 +27,11 @@
 
 - 线上 HTTP 验证：首页200、health200、setup200且可注册，records/export/photos均401；Safari 实际显示登录页与完整首次注册表单。内置浏览器访问workers.dev出现连接重置，Safari与终端访问正常。
 - 含线上URL和注册功能的 iPhone arm64 Release 原生构建再次通过（无签名；实际重新安装与真机登录仍待用户操作）。
+
+
+## 2026-10-27 iPhone照片格式修复
+
+- 根因：旧App把所有图片固定标为 image/jpeg/checkin.jpg，却未转换真实内容；PNG和HEIC可能被后端拒绝。
+- Worker按实际JPEG/PNG/WebP文件签名确定Content-Type，不再把不准确的multipart MIME视为图片损坏；不支持的内容仍拒绝。
+- Cloudflare真实本地运行时回归测试：把PNG内容标为JPEG上传成功，读取仍为image/png；伪造PNG内容仍返回400。
+- 修复已发布，版本6b7ac98e-29b4-492b-9372-7e163ef16fea。未读取或修改用户线上照片和记录。
