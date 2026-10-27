@@ -1,0 +1,36 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dailyrep",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-10-27",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*"
+    ]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "dailyrep",
+      "database_id": "4fbd8313-f1b6-487c-8f79-2b16f3da015f",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "PHOTOS",
+      "bucket_name": "dailyrep-photos"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "workers_dev": true,
+  "account_id": "c4a4902612954d3640797c0f27c27f03"
+}

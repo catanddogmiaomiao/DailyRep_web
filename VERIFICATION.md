@@ -11,3 +11,19 @@
 `build` 和 `dev` 显式使用 Vite 的 `runner` 配置加载器，避免本机默认配置打包器停滞。
 
 尚未完成：外部服务器部署、正式域名／HTTPS配置与个人账号初始化。当前源码上传不代表已经获得可从互联网访问的网站。实际个人数据由部署时的环境变量和持久数据目录管理，仓库不含个人密码或运动记录。
+
+
+## 2026-10-27 Cloudflare 改造
+
+- 新增 Worker API、D1 初始迁移、私有 R2 照片绑定、同域静态资源托管配置。
+- 新增邀请码保护的单账号首次注册；唯一主键与 INSERT OR IGNORE 防止重复创建；之后注册关闭。
+- PBKDF2-SHA256 随机盐密码哈希、服务端哈希会话、登录限流、跨站写请求校验、8MB照片签名验证。
+- Workers 本地运行时集成测试通过：注册拒绝与成功、已注册拒绝、登录、会话哈希及过期、私有照片上传读取、运动记录增删、真实 Excel 解析、注销、限流。测试隔离，不创建线上账号。
+- 原有6项测试通过，Vite生产打包通过，wrangler deploy --dry-run 打包通过（Worker gzip约303KB）。
+- iPhone 新增首次注册表单、网络超时及面向用户的连接错误提示；类型检查和3项测试通过。
+- Cloudflare OAuth 授权已完成；已创建 D1 dailyrep 和私有 R2 dailyrep-photos，应用7条初始化SQL并完成发布。
+- 线上地址：https://dailyrep.catanddogmiaomiao.workers.dev 。版本 c0e9c7c8-c9c8-4e96-9a3c-7684ee319f11；发布脚本验证 /api/health 返回 ok=true。
+- iPhone 本机 .env 已配置同一 HTTPS 地址，首次个人账号留给用户自行注册。
+
+- 线上 HTTP 验证：首页200、health200、setup200且可注册，records/export/photos均401；Safari 实际显示登录页与完整首次注册表单。内置浏览器访问workers.dev出现连接重置，Safari与终端访问正常。
+- 含线上URL和注册功能的 iPhone arm64 Release 原生构建再次通过（无签名；实际重新安装与真机登录仍待用户操作）。

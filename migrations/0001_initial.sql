@@ -1,0 +1,14 @@
+CREATE TABLE IF NOT EXISTS account (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  email TEXT NOT NULL,
+  salt TEXT NOT NULL,
+  hash TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, expires INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS sessions_expires ON sessions(expires);
+CREATE TABLE IF NOT EXISTS records (
+  id TEXT PRIMARY KEY, sport TEXT NOT NULL, value REAL NOT NULL,
+  duration INTEGER NOT NULL, occurredAt TEXT NOT NULL, photo TEXT
+);
+CREATE INDEX IF NOT EXISTS records_time ON records(occurredAt DESC);
+CREATE TABLE IF NOT EXISTS auth_attempts (key TEXT PRIMARY KEY, attempts INTEGER NOT NULL, expires INTEGER NOT NULL);

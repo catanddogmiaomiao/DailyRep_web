@@ -545,14 +545,20 @@ function Chart({ bars, unit }) {
 }
 function Login({ onLogin, error }) {
   const [err, setErr] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [register, setRegister] = useState(false),
+    [registrationAvailable, setRegistrationAvailable] = useState(false);
+  useEffect(() => {
+    api('/setup').then(data => setRegistrationAvailable(data.registrationAvailable)).catch(() => {});
+  }, []);
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
     setErr("");
     const f = new FormData(e.currentTarget);
     try {
-      const { email } = await api("/login", {
+      if (register && f.get('password') !== f.get('confirmPassword')) throw new Error('两次输入的密码不一致');
+      const { email } = await api(register ? "/register" : "/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(Object.fromEntries(f)),
@@ -588,8 +594,8 @@ function Login({ onLogin, error }) {
       </div>
       <form className="login-form" onSubmit={submit}>
         <Lock className="login-lock" size={30} />
-        <h2>欢迎回来</h2>
-        <p>登录后查看你的个人运动记录</p>
+        <h2>{register ? '创建个人账号' : '欢迎回来'}</h2>
+        <p>{register ? '注册后开始记录你的第一场运动' : '登录后查看你的个人运动记录'}</p>
         <label>
           邮箱
           <input
@@ -605,20 +611,29 @@ function Login({ onLogin, error }) {
           <input
             name="password"
             type="password"
-            autoComplete="current-password"
+            autoComplete={register ? 'new-password' : 'current-password'}
+            minLength={register ? 12 : undefined}
+            maxLength={1024}
             required
-            placeholder="输入密码"
+            placeholder={register ? '设置密码，至少12位' : '输入密码'}
           />
         </label>
+        {register && <>
+          <label>确认密码<input name="confirmPassword" type="password" autoComplete="new-password" required placeholder="再次输入密码" /></label>
+          <label>首次注册邀请码<input name="setupCode" type="password" autoComplete="off" required placeholder="输入服务所有者的邀请码" /></label>
+        </>}
         {(err || error) && (
           <p className="error" role="alert">
             {err || error}
           </p>
         )}
         <button className="gold" disabled={busy}>
-          {busy ? "正在登录…" : "登录查看数据"}
+          {busy ? "正在处理…" : register ? '注册并进入' : "登录查看数据"}
           <ArrowUpRight size={18} />
         </button>
+        {(registrationAvailable || register) && <button type="button" className="auth-switch" disabled={busy} onClick={() => { setRegister(!register); setErr(''); }}>
+          {register ? '已有账号？返回登录' : '首次使用？创建个人账号'}
+        </button>}
         <p className="quiet">
           <Lock size={14} />
           个人账号 · 数据私密保存

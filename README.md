@@ -8,9 +8,29 @@
 - 记录实际运动时间（默认当前时间，可补录）、运动量、持续时长，可上传一张 JPEG/PNG/WebP 照片（最大8MB）。
 - 周／月／年柱状图，按浏览设备本地日历分组，周从周一开始；支持前后周期查看。
 - 最近记录、照片查看、确认后删除；按当前运动项目导出全部记录为 `.xlsx`。导出时间使用明确标注的 UTC。
-- 单人账号密码登录，无公开注册。SQLite 持久化记录，磁盘保存照片。所有数据、照片和导出接口均要求登录。
+- 单人账号密码登录，首次使用邀请码注册；创建个人账号后关闭注册。Cloudflare D1 持久化账号和记录，私有 R2 保存照片，所有数据、照片和导出接口均要求登录。
 
-## 开发启动
+## Cloudflare 部署（当前推荐）
+
+网站和 API 由同一个 Worker 提供，记录存 D1，照片存私有 R2；不需要持续运行 Mac。
+
+```sh
+npm ci
+npx wrangler login
+npm run cf:deploy
+```
+
+部署脚本复用或创建 `dailyrep` D1 数据库、`dailyrep-photos` R2 桶，更新数据库绑定、应用版本化迁移，生成忽略 Git 的 `.dev.vars` 邀请码，再部署前端与接口并验证 `/api/health`。需在 Cloudflare 账号启用 R2。多个账号时须在 `wrangler.jsonc` 指定准确 `account_id`。
+
+打开命令输出的 HTTPS 地址，点击“首次使用？创建个人账号”，输入自己的邮箱、至少12位密码和 `.dev.vars` 中的 `SETUP_CODE`。邀请码通过 Worker secret 上传，前端不包含该值。创建唯一账号后其他注册请求返回409。密码使用随机盐和 PBKDF2-SHA256（100000次），会话仅以 SHA256 哈希存储，7天过期。浏览器使用 HttpOnly / SameSite=Strict / HTTPS Secure Cookie，iPhone 使用 SecureStore 中的 Bearer Token。
+
+将同一 HTTPS 地址填写到 App `.env` 的 `EXPO_PUBLIC_API_URL`，不含 `/api`，然后重新打包安装。不要只把 `dist/` 发布到静态 Pages：必须同时部署 Worker、D1、R2。
+
+本地 Cloudflare 环境：复制 `.dev.vars.example` 为 `.dev.vars`，运行 `npx wrangler d1 migrations apply dailyrep --local` 和 `npm run cf:dev`。`npm run test:worker` 在隔离的真实 Workers 本地运行时中验证注册、会话、R2照片、打卡和 Excel，不会创建线上账号或业务数据。
+
+下方 Node/Express 方式作为旧版自托管方案保留，使用独立的本地数据和账号，不会自动迁移到 D1。
+
+## Node/Express 开发启动（旧版）
 
 要求 Node.js **24 LTS**（使用内置 `node:sqlite`）。
 
