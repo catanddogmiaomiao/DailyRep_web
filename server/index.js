@@ -1,4 +1,6 @@
+import {matchesPlan} from '../src/plans.js';
 import express from "express";
+import {planStore,handlePlanRoute,widgetState,validateRecordPlan} from "./plans-api.js";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
 import multer from "multer";
@@ -25,6 +27,8 @@ if (!db.prepare("PRAGMA table_info(records)").all().some(column => column.name =
 if (!db.prepare("PRAGMA table_info(records)").all().some(column => column.name === "quantityUnit")) {
   db.exec("ALTER TABLE records ADD COLUMN quantityUnit TEXT");
 }
+db.exec("CREATE TABLE IF NOT EXISTS training_plans(id TEXT PRIMARY KEY,sport TEXT NOT NULL,status TEXT NOT NULL,revision INTEGER NOT NULL,spec TEXT NOT NULL); CREATE UNIQUE INDEX IF NOT EXISTS one_open_plan_per_sport ON training_plans(sport) WHERE status IN ('active','paused'); CREATE TABLE IF NOT EXISTS widget_links(tokenHash TEXT PRIMARY KEY,planId TEXT NOT NULL UNIQUE REFERENCES training_plans(id));");
+if(!db.prepare("PRAGMA table_info(records)").all().some(column=>column.name==="planId"))db.exec("ALTER TABLE records ADD COLUMN planId TEXT REFERENCES training_plans(id)");
 if (!db.prepare("SELECT id FROM account").get()) {
   const email = process.env.OWNER_EMAIL?.trim().toLowerCase(),
     password = process.env.OWNER_PASSWORD;
@@ -110,6 +114,10 @@ app.post(
     res.json({ token, email: a.email });
   },
 );
+app.get("/api/widget-state", rateLimit({windowMs:60000,limit:120,standardHeaders:true,legacyHeaders:false}), async (req,res) => {
+  try {res.json(await widgetState(planStore(db),req.get("X-DailyRep-Widget-Key")));}
+  catch(e){res.status(e.status||400).json({error:e.message});}
+});
 app.use("/api", (req, res, next) => {
   res.set("Cache-Control", "no-store");
   const session = db
@@ -117,6 +125,12 @@ app.use("/api", (req, res, next) => {
     .get(tokenOf(req) || "", Date.now());
   if (!session) return res.status(401).json({ error: "请先登录" });
   next();
+});
+app.use("/api", async (req,res,next) => {
+  const route=req.path;
+  if(!route.startsWith("/plans")&&route!=="/widget-links")return next();
+  try {const result=await handlePlanRoute(planStore(db),route,req.method,req.body);if(result)return res.status(result.status).json(result.body);next();}
+  catch(e){res.status(e.status||400).json({error:e.message});}
 });
 app.get("/api/me", (req, res) =>
   res.json({ email: db.prepare("SELECT email FROM account").get().email }),
@@ -139,9 +153,10 @@ const upload = multer({
       true,
     ),
 });
-app.post("/api/records", upload.single("photo"), (req, res) => {
+app.post("/api/records", upload.single("photo"), async (req, res) => {
   try {
     const r = validateRecord(req.body);
+    r.planId=await validateRecordPlan(planStore(db),r,req.body.planId);
     let photo = null;
     if (req.file) {
       const b = readFileSync(req.file.path);
@@ -156,7 +171,7 @@ app.post("/api/records", upload.single("photo"), (req, res) => {
       photo = req.file.filename;
     }
     const record = { id: randomBytes(16).toString("hex"), ...r, photo };
-    db.prepare("INSERT INTO records(id,sport,value,duration,occurredAt,photo,subtype,details,quantityUnit) VALUES (?,?,?,?,?,?,?,?,?)").run(
+    db.prepare("INSERT INTO records(id,sport,value,duration,occurredAt,photo,subtype,details,quantityUnit,planId) VALUES (?,?,?,?,?,?,?,?,?,?)").run(
       record.id,
       r.sport,
       r.value,
@@ -166,6 +181,7 @@ app.post("/api/records", upload.single("photo"), (req, res) => {
       r.subtype,
       r.details ? JSON.stringify(r.details) : null,
       r.quantityUnit,
+      r.planId,
     );
     res.status(201).json(record);
   } catch (e) {
@@ -201,6 +217,7 @@ app.get("/api/export", (req, res, next) => {
       { header: "运动类型", key: "subtype", width: 18 },
       { header: "打卡编号", key: "checkinId", width: 36 },
       { header: "分组明细", key: "setsText", width: 55 },
+      { header: "关联计划", key: "planTitle", width: 25 },
     ];
     const names = {
         running: "跑步",
@@ -218,12 +235,13 @@ app.get("/api/export", (req, res, next) => {
       : db.prepare("SELECT * FROM records ORDER BY occurredAt DESC").all();
     const subtype = req.query.subtype || "";
     if (subtype && subtype !== "unclassified" && !subtypeOptions(req.query.sport).some(s => s.value === subtype)) return res.status(400).json({error: "请选择有效的运动类型"});
-    exportDetails(rows, subtype).forEach((r) =>
-      sheet.addRow({ ...r, sport: names[r.sport], unit: recordUnit(r), setsText: formatSets(r.sets,recordUnit(r)), subtype: subtypeLabel(r.sport,r.subtype) }),
+    const planNames=new Map(db.prepare("SELECT id,spec FROM training_plans").all().map(p=>[p.id,JSON.parse(p.spec).title]));
+    exportDetails(rows.filter(r=>matchesPlan(r,req.query.planId||"")), subtype).forEach((r) =>
+      sheet.addRow({ ...r, sport: names[r.sport], unit: recordUnit(r), setsText: formatSets(r.sets,recordUnit(r)), planTitle:r.planId?(planNames.get(r.planId)||"已关联计划"):"自由打卡", subtype: subtypeLabel(r.sport,r.subtype) }),
     );
     sheet.getRow(1).font = { bold: true, color: { argb: "FF1F2A44" } };
     sheet.views = [{ state: "frozen", ySplit: 1 }];
-    sheet.autoFilter = "A1:H1";
+    sheet.autoFilter = "A1:I1";
     res.attachment("dailyRep.xlsx");
     res.type(
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

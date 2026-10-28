@@ -70,3 +70,10 @@
 - Cloudflare发布版本8904d1e2-7616-4131-8aca-4c1214a8474a，0004迁移与远端schema列核验成功，线上首页已返回新资源index-BPi41EV3.js。部署后首次健康自检和部分独立请求遭遇TLS连接重置；未把传输失败记作业务成功，未操作线上运动记录作测试。
 
 - 后续独立核验：使用公共DNS核验得到的两条地址、保留原域名和TLS证书校验分别访问健康接口，均返回{ok:true}；确认后台业务健康。该核验不代表用户手机的DNS／蜂窝网络路径已恢复。
+# Long-term plans (2026-10-28)
+
+- All 23 Node tests and Cloudflare local runtime integration passed, including plan creation/conflicts, record linkage, pause/resume, milestone continuation, stale revision 409, Excel filtering and readonly widget link revocation.
+- Vite production build passed. Both repositories have identical src/plans.js.
+- Browser test with local simulated data confirmed a completed 100-day stage extends to 110 without resetting history. No production training records created.
+- Additive migration 0005 preserves old records as unlinked; existing login/photo/data authentication remains required.
+- iPhone unsigned Release and WidgetKit extension compiled. Notification delivery and live widget refresh still need physical-device acceptance.

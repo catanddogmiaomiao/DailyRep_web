@@ -20,6 +20,8 @@ import {
   Clock,
   Check,
 } from "lucide-react";
+import {PlansPanel, PlanSummary} from "./PlansPanel.jsx";
+import {dateInZone,isDue,matchesPlan,planProgress} from "./plans.js";
 import { report, movePeriod } from "./stats";
 import {subtypeOptions, subtypeLabel, matchesSubtype, recordDetails, projectRecord, recordUnit, formatSets} from "./subtypes.js";
 import "./style.css";
@@ -49,6 +51,10 @@ async function api(url, options) {
 function App() {
   const [user, setUser] = useState(undefined),
     [records, setRecords] = useState([]),
+    [plans,setPlans] = useState([]),
+    [plansVisible,setPlansVisible] = useState(false),
+    [initialPlanId,setInitialPlanId] = useState(""),
+    [planFilter,setPlanFilter] = useState(""),
     [page, setPage] = useState("home"),
     [period, setPeriod] = useState("week"),
     [subtype, setSubtype] = useState(""),
@@ -60,18 +66,19 @@ function App() {
     [exporting, setExporting] = useState(false);
   const generation = useRef(0);
   useEffect(() => { window.scrollTo(0, 0); }, [page, user]);
-  const load = async () => {
+  const load = async (propagate=false) => {
     const version = generation.current;
     setLoading(true);
     try {
-      const rows = await api("/records");
-      if (version === generation.current) setRecords(rows);
+      const [rows,planRows] = await Promise.all([api("/records"),api("/plans")]);
+      if (version === generation.current) {setRecords(rows);setPlans(planRows);}
     } catch (e) {
       if (e.status === 401) {
         generation.current++;
         setUser(null);
         setRecords([]);
       } else setError(e.message);
+      if(propagate)throw e;
     } finally {
       setLoading(false);
     }
@@ -92,14 +99,14 @@ function App() {
       await api("/logout", { method: "POST" });
       generation.current++;
       setUser(null);
-      setRecords([]);
+      setRecords([]);setPlans([]);setPlansVisible(false);
       setPhoto(null);
     } catch (e) {
       setError(e.message);
     }
   };
   const go = (key) => {
-    setPage(key);
+    setPage(key);setPlanFilter("");
     setSubtype("");
     setPeriod("week");
     setAnchor(new Date());
@@ -122,11 +129,11 @@ function App() {
       />
     );
   const selected = sports[page],
-    stats = selected ? report(records, page, period, anchor, subtype) : null;
+    stats = selected ? report(records.filter(r=>matchesPlan(r,planFilter)), page, period, anchor, subtype) : null;
   async function exportFile() {
     setExporting(true);
     try {
-      const r = await fetch("/api/export?sport=" + page + (subtype ? "&subtype=" + encodeURIComponent(subtype) : ""));
+      const r = await fetch("/api/export?sport=" + page + (subtype ? "&subtype=" + encodeURIComponent(subtype) : "")+(planFilter?"&planId="+encodeURIComponent(planFilter):""));
       if (!r.ok) throw new Error("导出失败，请重新登录或稍后重试");
       const u = URL.createObjectURL(await r.blob()),
         a = document.createElement("a");
@@ -173,6 +180,7 @@ function App() {
             <ChevronRight size={15} />
           </button>
         ))}
+        <button className="nav" onClick={()=>setPlansVisible(true)}><CalendarDays size={20}/>长期计划</button>
         <div className="account">
           <Lock size={16} />
           <span>
@@ -260,6 +268,8 @@ function App() {
                 );
               })}
             </section>
+            <div className="section-heading"><h2>长期计划</h2><button className="outline" onClick={()=>setPlansVisible(true)}>管理计划</button></div>
+            <section className="plan-home">{plans.filter(p=>p.status==='active'||p.status==='paused').map(plan=><PlanSummary key={plan.id} plan={plan} onClick={()=>setPlansVisible(true)}/>)}{!plans.some(p=>p.status==='active'||p.status==='paused')&&<button className="plan-summary" onClick={()=>setPlansVisible(true)}>设置100天目标，或继续自由打卡 →</button>}</section>
             <p className="quiet">
               <Lock size={14} />
               记录只属于你，今天的努力值得被记住。
@@ -321,12 +331,13 @@ function App() {
                   <Download size={17} />
                   {exporting ? "正在导出" : "导出 Excel"}
                 </button>
-                <button className="gold" onClick={() => setModal(true)}>
+                <button className="gold" onClick={() => {setInitialPlanId("");setModal(true);}}>
                   <Plus size={18} />
                   {selected.name}打卡
                 </button>
               </div>
             </div>
+            {plans.some(p=>p.sport===page)&&<label className="subtype-filter">统计范围<select value={planFilter} onChange={e=>setPlanFilter(e.target.value)}><option value="">全部记录</option><option value="free">自由打卡</option>{plans.filter(p=>p.sport===page).map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select></label>}
             {subtypeOptions(page).length > 0 && <label className="subtype-filter">按类型统计
               <select value={subtype} onChange={e => setSubtype(e.target.value)}>
                 <option value="">全部类型</option>
@@ -400,7 +411,7 @@ function App() {
               <div className="section-heading">
                 <h2>最近记录</h2>
                 <span>
-                  {records.filter((r) => r.sport === page && matchesSubtype(r, subtype)).length} 条记录
+                  {records.filter((r) => r.sport === page && matchesSubtype(r, subtype) && matchesPlan(r,planFilter)).length} 条记录
                 </span>
               </div>
               <div className="table-wrap">
@@ -417,7 +428,7 @@ function App() {
                   </thead>
                   <tbody>
                     {records
-                      .filter((r) => r.sport === page && matchesSubtype(r, subtype))
+                      .filter((r) => r.sport === page && matchesSubtype(r, subtype) && matchesPlan(r,planFilter))
                       .map(r => projectRecord(r, subtype))
                       .map((r) => (
                         <tr key={r.id}>
@@ -491,6 +502,8 @@ function App() {
       {modal && (
         <Checkin
           sport={page}
+          plans={plans}
+          initialPlanId={initialPlanId}
           onClose={() => setModal(false)}
           onSaved={async () => {
             setModal(false);
@@ -499,6 +512,7 @@ function App() {
           }}
         />
       )}
+      {plansVisible&&<PlansPanel plans={plans} api={api} onChanged={()=>load(true)} onPlanSaved={saved=>setPlans(previous=>[{...saved,progress:planProgress(saved,records)},...previous.filter(p=>p.id!==saved.id)])} onClose={()=>setPlansVisible(false)} onCheckin={(sport,planId)=>{setPlansVisible(false);go(sport);setInitialPlanId(planId);setModal(true);}}/>}
       {photo && (
         <div className="overlay" onClick={() => setPhoto(null)}>
           <button
@@ -673,7 +687,7 @@ function SetInputs({values, onChange, disabled}) {
     <p>{values.length} 组 · 合计 {values.reduce((sum,v) => sum+(Number(v)||0),0)} 个</p>
   </div>;
 }
-function Checkin({ sport, onClose, onSaved }) {
+function Checkin({ sport, plans, initialPlanId, onClose, onSaved }) {
   const s = sports[sport],
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -681,6 +695,9 @@ function Checkin({ sport, onClose, onSaved }) {
     [preview, setPreview] = useState(null),
     [details, setDetails] = useState([{id: "0", subtype: subtypeOptions(sport)[0]?.value || "", sets: [""]}]),
     [pushupSets, setPushupSets] = useState([""]);
+  const [when,setWhen]=useState(localTime()),[planId,setPlanId]=useState(initialPlanId||plans.find(p=>p.sport===sport&&p.status==='active'&&isDue(p,dateInZone(new Date(),p.timeZone)))?.id||'');
+  const eligiblePlans=Number.isFinite(new Date(when).getTime())?plans.filter(p=>p.sport===sport&&p.status!=='archived'&&dateInZone(new Date(when),p.timeZone)>=p.startDate&&dateInZone(new Date(when),p.timeZone)<=p.endDate):[];
+  useEffect(()=>{if(planId&&!eligiblePlans.some(p=>p.id===planId))setPlanId('');},[when,plans,planId]);
   const nextDetailId = useRef(1);
   const hasDetails = subtypeOptions(sport).length > 0;
   const camera = useRef(),
@@ -745,7 +762,7 @@ function Checkin({ sport, onClose, onSaved }) {
         f.set("details", JSON.stringify(entries));
       }
       if (sport === "pushups") f.set("details", JSON.stringify([{subtype:null,sets:pushupSets.map(Number),duration:minutes*60+seconds}]));
-      f.set("sport", sport);
+      f.set("sport", sport);if(planId)f.set('planId',planId);
       f.set("duration", String(minutes * 60 + seconds));
       f.set("occurredAt", new Date(f.get("occurredAt")).toISOString());
       if (file) f.set("photo", file);
@@ -779,12 +796,14 @@ function Checkin({ sport, onClose, onSaved }) {
             <input
               name="occurredAt"
               type="datetime-local"
-              defaultValue={localTime()}
+              value={when}
+              onChange={e=>setWhen(e.target.value)}
               max={localTime()}
               required
             />
             <small>默认当前时间，可修改补打卡</small>
           </label>
+          <label className="field">关联长期计划（可选）<select value={planId} onChange={e=>setPlanId(e.target.value)}><option value="">自由打卡，不关联计划</option>{eligiblePlans.map(plan=><option key={plan.id} value={plan.id}>{plan.title}{isDue(plan,dateInZone(new Date(when),plan.timeZone))?' · 当天计划':' · 额外训练'}</option>)}</select><small>同一天多次打卡只算一个训练日；补打卡按运动日期计算。</small></label>
           {hasDetails ? <div className="session-details">
             <h3>{sport === "swimming" ? "本次游泳明细" : "本次训练明细"}</h3>
             <p>添加本次运动包含的类型，共用日期和照片，保存后算一次打卡。</p>

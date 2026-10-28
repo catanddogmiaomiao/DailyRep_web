@@ -55,3 +55,16 @@ New abs/pushups details carry `sets: number[]`, e.g. `[{"subtype":"situps","sets
 `quantityUnit` is `reps` for newly grouped abs records and `minutes` for legacy total-only abs payloads. Omitted historical metadata also means minutes for abs. The server infers this from validated set arrays; clients cannot turn old minute totals into counts by merely sending a unit. A single abs check-in cannot mix grouped repetitions with minute-based details. Additive migration 0004 stores the unit; prior rows remain untouched.
 
 Reports expose setCount and legacyCount. Abs volume totals and bars include only repetition-based rows. Duration/check-in counts retain all matching records; legacy rows remain visible with minutes. Excel keeps original columns and adds H=分组明细 with human-readable numbered sets. Each row carries its actual unit in D. Both clients share these aggregation/unit rules.
+
+
+## Optional long-term plans and widgets
+
+Authenticated GET /api/plans returns plan specs and computed progress. POST /api/plans creates a single-sport plan with title, startDate, goalDays (1–3650) or endMode=date/endDate, timeZone, repeat {frequency,interval,weekdays,monthMode}, reminderEnabled and reminderTime. One active or paused plan per sport is enforced by a unique database index.
+
+POST /api/plans/:id takes the current numeric revision plus action edit/pause/resume/extend/finish/archive. Extend accepts a larger total goalDays, preserves id/start/history, and records the previous milestone. Stale revisions return409. Edits affect future schedule dates; pauses stop notifications and extend the end on resume.
+
+Records accept optional multipart planId; sport and plan date range are validated before upload storage. Omitted planId remains independent. Responses return nullable planId. GET /api/export?sport=abs&planId=free (or a plan ID) filters Excel and adds I=关联计划. Previous A–H columns remain unchanged.
+
+POST /api/widget-links {planId} returns a12-character readonly code and replaces that plan's previous link. DELETE /api/widget-links {planId} revokes it. These endpoints require login. GET /api/widget-state uses X-DailyRep-Widget-Key instead of a login session; returns only planId/title/sport/status/progress/updatedAt, no records, account data or photos. Codes are stored as SHA256 hashes and the public endpoint is separately rate limited.
+
+Migration0005 adds training_plans, nullable records.planId and widget_links without rewriting historical records. Express initializes equivalent schema. Keep both repositories' src/plans.js identical. Notifications are scheduled locally on iPhone; webpage changes require reopening the phone app to sync.

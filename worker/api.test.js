@@ -15,6 +15,8 @@ test('Cloudflare runtime: single-owner signup, auth, R2 photos, records, real XL
     await env.DB.prepare(migration.trim().replace(/;$/, '')).run();
     await env.DB.prepare((await readFile(new URL('../migrations/0003_record_details.sql',import.meta.url),'utf8')).trim().replace(/;$/, '')).run();
     await env.DB.prepare((await readFile(new URL('../migrations/0004_record_quantity_unit.sql',import.meta.url),'utf8')).trim().replace(/;$/, '')).run();
+    const plansSchema=await readFile(new URL('../migrations/0005_training_plans.sql',import.meta.url),'utf8');
+    for(const sql of plansSchema.split(';').map(s=>s.trim()).filter(Boolean))await env.DB.prepare(sql).run();
     let token = '';
     const call = async (route, init={}) => {
       // Serialize with the same browser multipart encoder before crossing the
@@ -43,6 +45,34 @@ test('Cloudflare runtime: single-owner signup, auth, R2 photos, records, real XL
     assert.equal((await (await call('/me')).json()).email,owner.email);
     const session = await env.DB.prepare('SELECT token FROM sessions').first();
     assert.notEqual(session.token,token,'stored session is a hash, not the bearer token');
+    const planStart=new Date(Date.now()-1000).toISOString().slice(0,10);
+    const planBody={sport:'abs',title:'腹肌100天',startDate:planStart,goalDays:100,timeZone:'UTC',reminderEnabled:true,reminderTime:'19:00',repeat:{frequency:'daily'}};
+    const planResponse=await post('/plans',planBody);assert.equal(planResponse.status,201,await planResponse.clone().text());
+    let trainingPlan=await planResponse.json();const planId=trainingPlan.id;
+    assert.equal((await post('/plans',planBody)).status,409);
+    assert.equal((await post('/plans',{...planBody,sport:'swimming',goalDays:0})).status,400);
+    const plannedForm=new FormData();
+    for(const [key,value] of Object.entries({sport:'abs',details:JSON.stringify([{subtype:'situps',sets:[20,20,15],duration:300}]),planId,occurredAt:new Date(Date.now()-1000).toISOString()}))plannedForm.set(key,value);
+    const plannedResponse=await call('/records',{method:'POST',body:plannedForm});assert.equal(plannedResponse.status,201,await plannedResponse.clone().text());
+    const planned=await plannedResponse.json();assert.equal(planned.planId,planId);
+    const planList=await (await call('/plans')).json();assert.equal(planList[0].progress.completedDays,1);
+    for(const command of [{action:'pause'},{action:'resume'},{action:'extend',goalDays:110},{action:'extend',goalDays:120}]) {
+      const response=await post('/plans/'+planId,{...command,revision:trainingPlan.revision});assert.equal(response.status,200,await response.clone().text());trainingPlan=await response.json();
+    }
+    assert.equal(trainingPlan.id,planId);assert.equal(trainingPlan.goalDays,120);assert.equal(trainingPlan.milestones.length,2);
+    assert.equal((await post('/plans/'+planId,{action:'extend',goalDays:130,revision:1})).status,409);
+    const wrongPlan=new FormData();for(const [key,value] of Object.entries({sport:'running',value:'1',duration:'60',occurredAt:new Date(Date.now()-1000).toISOString(),planId}))wrongPlan.set(key,value);
+    assert.equal((await call('/records',{method:'POST',body:wrongPlan})).status,400);
+    const linkedExport=new ExcelJS.Workbook();await linkedExport.xlsx.load(Buffer.from(await (await call('/export?sport=abs&planId='+planId)).arrayBuffer()));assert.equal(linkedExport.worksheets[0].getCell('I2').value,'腹肌100天');
+    const link=await post('/widget-links',{planId});assert.equal(link.status,201);const linkData=await link.json();assert.match(linkData.code,/^[a-f0-9]{12}$/);
+    const authToken=token;token='';
+    const widget=await call('/widget-state',{headers:{'X-DailyRep-Widget-Key':linkData.code}});assert.equal(widget.status,200);const widgetData=await widget.json();assert.equal(widgetData.progress.goalDays,120);assert.equal(widgetData.progress.completedDays,1);assert.equal(widgetData.email,undefined);assert.equal(widgetData.records,undefined);
+    assert.equal((await call('/plans')).status,401);assert.equal((await call('/widget-state')).status,401);
+    token=authToken;
+    assert.equal((await call('/widget-links',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({planId})})).status,200);
+    assert.equal((await call('/widget-state',{headers:{'X-DailyRep-Widget-Key':linkData.code}})).status,401);
+    assert.equal((await call('/records/'+planned.id,{method:'DELETE'})).status,204);
+    assert.equal((await post('/plans/'+planId,{action:'finish',revision:trainingPlan.revision})).status,200);
     const form = new FormData();
     for (const [key,value] of Object.entries({sport:'running',value:'7.25',duration:'2520',occurredAt:'2025-10-22T07:30:00+08:00'})) form.set(key,value);
     // Regression: older iPhone builds labeled a real PNG as checkin.jpg.

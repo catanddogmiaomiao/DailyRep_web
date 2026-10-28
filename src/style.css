@@ -998,3 +998,18 @@ footer {
 .set-row label {display:flex;align-items:center;gap:12px;flex:1;min-width:0;}
 .set-row input {min-width:0;flex:1;min-height:48px;}
 .set-row button {width:48px;height:48px;display:grid;place-items:center;border:0;border-radius:10px;background:#26334a;color:#e8dcc8;}
+.plan-summary {display:flex;flex-direction:column;gap:10px;text-align:left;width:100%;padding:20px;border:1px solid #c6a75e44;border-radius:18px;color:#e8dcc8;background:linear-gradient(135deg,#24334a,#1a293d);}
+.plan-summary b {font-size:30px;color:#c6a75e;}
+.plan-summary p {font-size:13px;line-height:1.6;margin:0;color:#a9b4c6;}
+.plan-summary progress {width:100%;height:6px;accent-color:#c6a75e;}
+.plans-modal {max-width:680px;}
+.plan-form {margin-top:20px;}
+.plan-form input,.plan-form select {color-scheme:dark;}
+.plan-note {color:#a9b4c6;font-size:13px;line-height:1.7;margin:14px 0;display:block;}
+.plan-item {margin:24px 0;padding-bottom:20px;border-bottom:1px solid #ffffff15;}
+.plan-actions {display:flex;flex-wrap:wrap;gap:10px;}
+.plan-actions button {min-height:48px;}
+.plan-celebration {padding:18px;border:1px solid #c6a75e66;border-radius:16px;margin:16px 0;color:#e8dcc8;background:#c6a75e12;}
+.plan-weekdays {display:flex;flex-wrap:wrap;gap:10px;margin:16px 0;border:1px solid #c6a75e44;border-radius:12px;padding:12px;}
+.plan-weekdays label,.plan-checkbox {display:flex;align-items:center;gap:8px;min-height:44px;}
+.plan-home {display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin:24px 0;}

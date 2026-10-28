@@ -1,4 +1,6 @@
+import {matchesPlan} from '../src/plans.js';
 import ExcelJS from 'exceljs';
+import {planStore,handlePlanRoute,widgetState,validateRecordPlan} from '../server/plans-api.js';
 import { validateRecord, sports } from '../server/domain.js';
 import {subtypeOptions, subtypeLabel, matchesSubtype, hydrateRecord, exportDetails, recordUnit, formatSets} from '../src/subtypes.js';
 
@@ -36,6 +38,11 @@ async function limitAuth(request, env) {
   const row = await env.DB.prepare('INSERT INTO auth_attempts(key,attempts,expires) VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET attempts=attempts+1 RETURNING attempts').bind(key, now + window).first();
   if (row.attempts > 10) fail('尝试次数过多，请15分钟后重试', 429);
 }
+async function limitWidget(request,env) {
+  const now=Date.now(),key=await digest('widget:'+ (request.headers.get('CF-Connecting-IP')||'local')+':'+Math.floor(now/60000));
+  const row=await env.DB.prepare('INSERT INTO auth_attempts(key,attempts,expires) VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET attempts=attempts+1 RETURNING attempts').bind(key,now+60000).first();
+  if(row.attempts>120)fail('请求过于频繁',429);
+}
 async function session(env, email, request, status = 200) {
   const token = random(32), now = Date.now();
   await env.DB.batch([
@@ -59,6 +66,10 @@ async function api(request, env) {
   if (route === '/health' && method === 'GET') {
     await env.DB.prepare('SELECT 1').first();
     return json({ok: true});
+  }
+  if (route === '/widget-state' && method === 'GET') {
+    await limitWidget(request,env);
+    return json(await widgetState(planStore(env.DB,true),request.headers.get('X-DailyRep-Widget-Key')));
   }
   if (route === '/setup' && method === 'GET') {
     const account = await env.DB.prepare('SELECT id FROM account').first();
@@ -88,6 +99,15 @@ async function api(request, env) {
   const tokenHash = await digest(token);
   const auth = await env.DB.prepare('SELECT token FROM sessions WHERE token=? AND expires>?').bind(tokenHash, Date.now()).first();
   if (!auth) fail('请先登录', 401);
+  if (route.startsWith('/plans') || route==='/widget-links') {
+    let body={};
+    if(method!=='GET') {
+      const text=await request.text();if(text.length>16384)fail('计划内容过大',413);
+      try {body=JSON.parse(text);}catch {fail('计划格式无效',400);}
+    }
+    const result=await handlePlanRoute(planStore(env.DB,true),route,method,body);
+    if(result)return json(result.body,result.status);
+  }
   if (route === '/me' && method === 'GET') return json(await env.DB.prepare('SELECT email FROM account').first());
   if (route === '/logout' && method === 'POST') {
     await env.DB.prepare('DELETE FROM sessions WHERE token=?').bind(tokenHash).run();
@@ -111,6 +131,7 @@ async function api(request, env) {
     catch { fail('请使用有效的运动打卡表单', 400); }
     let data;
     try { data = validateRecord(Object.fromEntries(form)); } catch (e) { fail(e.message, 400); }
+    data.planId=await validateRecordPlan(planStore(env.DB,true),data,form.get('planId'));
     const file = form.get('photo'); let photo = null;
     if (file && typeof file !== 'string' && file.size) {
       if (file.size > MAX_PHOTO) fail('照片不能超过8MB', 400);
@@ -122,7 +143,7 @@ async function api(request, env) {
       await env.PHOTOS.put(photo, bytes, {httpMetadata: {contentType: type}});
     }
     const record = {id: random(16), ...data, photo};
-    try { await env.DB.prepare('INSERT INTO records(id,sport,value,duration,occurredAt,photo,subtype,details,quantityUnit) VALUES (?,?,?,?,?,?,?,?,?)').bind(record.id, data.sport, data.value, data.duration, data.occurredAt, photo, data.subtype, data.details ? JSON.stringify(data.details) : null, data.quantityUnit).run(); }
+    try { await env.DB.prepare('INSERT INTO records(id,sport,value,duration,occurredAt,photo,subtype,details,quantityUnit,planId) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(record.id, data.sport, data.value, data.duration, data.occurredAt, photo, data.subtype, data.details ? JSON.stringify(data.details) : null, data.quantityUnit, data.planId).run(); }
     catch (e) { if (photo) await env.PHOTOS.delete(photo); throw e; }
     return json(record, 201);
   }
@@ -145,13 +166,15 @@ async function api(request, env) {
     const query = sports.includes(sport) ? env.DB.prepare('SELECT * FROM records WHERE sport=? ORDER BY occurredAt DESC').bind(sport) : env.DB.prepare('SELECT * FROM records ORDER BY occurredAt DESC');
     const subtype = url.searchParams.get('subtype') || '';
     if (subtype && subtype !== 'unclassified' && !subtypeOptions(sport).some(s => s.value === subtype)) fail('请选择有效的运动类型',400);
-    const rows = (await query.all()).results.filter(r => matchesSubtype(r, subtype));
+    const planFilter=url.searchParams.get("planId")||"";
+    const rows = (await query.all()).results.filter(r => matchesSubtype(r, subtype)&&matchesPlan(r,planFilter));
     const book = new ExcelJS.Workbook(), sheet = book.addWorksheet('运动记录');
-    sheet.columns = [{header:'项目',key:'sport',width:15},{header:'运动时间 (UTC)',key:'occurredAt',width:28},{header:'运动量',key:'value',width:14},{header:'单位',key:'unit',width:12},{header:'时长（秒）',key:'duration',width:16},{header:'运动类型',key:'subtype',width:18},{header:'打卡编号',key:'checkinId',width:36},{header:'分组明细',key:'setsText',width:55}];
+    sheet.columns = [{header:'项目',key:'sport',width:15},{header:'运动时间 (UTC)',key:'occurredAt',width:28},{header:'运动量',key:'value',width:14},{header:'单位',key:'unit',width:12},{header:'时长（秒）',key:'duration',width:16},{header:'运动类型',key:'subtype',width:18},{header:'打卡编号',key:'checkinId',width:36},{header:'分组明细',key:'setsText',width:55},{header:'关联计划',key:'planTitle',width:25}];
     const names = {running:'跑步',swimming:'游泳',pushups:'俯卧撑',abs:'腹肌训练'}, units = {running:'km',swimming:'m',pushups:'次',abs:'分钟'};
-    exportDetails(rows, subtype).forEach(row => sheet.addRow({...row,sport:names[row.sport],unit:recordUnit(row),setsText:formatSets(row.sets,recordUnit(row)),subtype:subtypeLabel(row.sport,row.subtype)}));
+    const planNames=new Map((await env.DB.prepare("SELECT id,spec FROM training_plans").all()).results.map(p=>[p.id,JSON.parse(p.spec).title]));
+    exportDetails(rows, subtype).forEach(row => sheet.addRow({...row,sport:names[row.sport],unit:recordUnit(row),setsText:formatSets(row.sets,recordUnit(row)),planTitle:row.planId?(planNames.get(row.planId)||"已关联计划"):"自由打卡",subtype:subtypeLabel(row.sport,row.subtype)}));
     sheet.getRow(1).font = {bold:true,color:{argb:'FF1F2A44'}};
-    sheet.views = [{state:'frozen',ySplit:1}]; sheet.autoFilter = 'A1:H1';
+    sheet.views = [{state:'frozen',ySplit:1}]; sheet.autoFilter = 'A1:I1';
     return new Response(await book.xlsx.writeBuffer(), {headers: {'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="dailyRep.xlsx"'}});
   }
   fail('接口不存在', 404);
