@@ -21,7 +21,7 @@ import {
   Check,
 } from "lucide-react";
 import { report, movePeriod } from "./stats";
-import {subtypeOptions, subtypeLabel, matchesSubtype} from "./subtypes.js";
+import {subtypeOptions, subtypeLabel, matchesSubtype, recordDetails, projectRecord} from "./subtypes.js";
 import "./style.css";
 const sports = {
   running: { name: "跑步", unit: "km", icon: Footprints },
@@ -416,6 +416,7 @@ function App() {
                   <tbody>
                     {records
                       .filter((r) => r.sport === page && matchesSubtype(r, subtype))
+                      .map(r => projectRecord(r, subtype))
                       .map((r) => (
                         <tr key={r.id}>
                           <td>
@@ -423,7 +424,7 @@ function App() {
                               hour12: false,
                             })}
                           </td>
-                          {subtypeOptions(page).length > 0 && <td>{subtypeLabel(page, r.subtype)}</td>}
+                          {subtypeOptions(page).length > 0 && <td>{recordDetails(r).map(d => <div key={d.subtype || "unclassified"}>{subtypeLabel(page,d.subtype)} · {fmt(d.value)} {selected.unit} · {Math.floor(d.duration/60)}分{d.duration%60}秒</div>)}</td>}
                           <td>
                             {fmt(r.value)} {selected.unit}
                           </td>
@@ -665,7 +666,10 @@ function Checkin({ sport, onClose, onSaved }) {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [file, setFile] = useState(null),
-    [preview, setPreview] = useState(null);
+    [preview, setPreview] = useState(null),
+    [details, setDetails] = useState([{id: "0", subtype: subtypeOptions(sport)[0]?.value || ""}]);
+  const nextDetailId = useRef(1);
+  const hasDetails = subtypeOptions(sport).length > 0;
   const camera = useRef(),
     album = useRef(),
     dialog = useRef();
@@ -719,6 +723,14 @@ function Checkin({ sport, onClose, onSaved }) {
       const f = new FormData(e.currentTarget);
       const minutes = Number(f.get("minutes")),
         seconds = Number(f.get("seconds"));
+      if (hasDetails) {
+        const entries = details.map(d => {
+          const minutes = Number(f.get(`minutes_${d.id}`)), seconds = Number(f.get(`seconds_${d.id}`));
+          if (!Number.isInteger(minutes) || minutes < 0 || !Number.isInteger(seconds) || seconds < 0 || seconds > 59) throw new Error("请检查每项明细的时长");
+          return {subtype: d.subtype, value: Number(f.get(`value_${d.id}`)), duration: minutes*60+seconds};
+        });
+        f.set("details", JSON.stringify(entries));
+      }
       f.set("sport", sport);
       f.set("duration", String(minutes * 60 + seconds));
       f.set("occurredAt", new Date(f.get("occurredAt")).toISOString());
@@ -759,13 +771,29 @@ function Checkin({ sport, onClose, onSaved }) {
             />
             <small>默认当前时间，可修改补打卡</small>
           </label>
-          {subtypeOptions(sport).length > 0 && <label className="field">
-            {sport === "swimming" ? "泳姿" : "训练类型"}
-            <select name="subtype" required defaultValue={subtypeOptions(sport)[0].value}>
-              {subtypeOptions(sport).map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-            <small>以下运动量和时长计入所选类型，其他类型可另打一次卡。</small>
-          </label>}
+          {hasDetails ? <div className="session-details">
+            <h3>{sport === "swimming" ? "本次游泳明细" : "本次训练明细"}</h3>
+            <p>添加本次运动包含的类型，共用日期和照片，保存后算一次打卡。</p>
+            {details.map((detail,index) => <fieldset key={detail.id} className="session-detail">
+              <legend>明细 {index+1}</legend>
+              {details.length > 1 && <button type="button" className="detail-remove" aria-label={`移除明细${index+1}`} disabled={busy} onClick={() => setDetails(rows => rows.filter(d => d.id !== detail.id))}><X size={20} /></button>}
+              <label className="field">{sport === "swimming" ? "泳姿" : "训练类型"}
+                <select value={detail.subtype} onChange={e => setDetails(rows => rows.map(d => d.id === detail.id ? {...d,subtype:e.target.value} : d))}>
+                  {subtypeOptions(sport).filter(option => option.value === detail.subtype || !details.some(d => d.subtype === option.value)).map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </label>
+              <label className="field">{sport === "swimming" ? "距离" : "训练量"}（{s.unit}）<input aria-label={`${subtypeLabel(sport,detail.subtype)}运动量`} name={`value_${detail.id}`} type="number" min="0.01" max="100000" step="0.01" required placeholder="0" /></label>
+              <div className="field"><span>时长</span><div className="duration-input">
+                <label><input aria-label={`${subtypeLabel(sport,detail.subtype)}分钟数`} name={`minutes_${detail.id}`} type="number" min="0" max="1440" step="1" required placeholder="0" />分钟</label>
+                <label><input aria-label={`${subtypeLabel(sport,detail.subtype)}秒数`} name={`seconds_${detail.id}`} type="number" min="0" max="59" step="1" required defaultValue="0" />秒</label>
+              </div></div>
+            </fieldset>)}
+            {details.length < subtypeOptions(sport).length && <button type="button" className="outline" disabled={busy} onClick={() => {
+              const next = subtypeOptions(sport).find(option => !details.some(d => d.subtype === option.value));
+              if (next) setDetails(rows => [...rows,{id:String(nextDetailId.current++),subtype:next.value}]);
+            }}><Plus size={18} />{sport === "swimming" ? "添加泳姿" : "添加训练项目"}</button>}
+            <p>以上所有明细合计为 1 次打卡。</p>
+          </div> : <>
           <label className="field">
             {sport === "running"
               ? "跑量"
@@ -814,6 +842,7 @@ function Checkin({ sport, onClose, onSaved }) {
               </label>
             </div>
           </div>
+          </>}
           <div className="field">
             <span>
               打卡照片 <small>可选 · 最大8MB</small>

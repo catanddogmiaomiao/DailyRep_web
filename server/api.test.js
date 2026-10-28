@@ -124,6 +124,17 @@ test("private API: login, records, protected photo, XLSX export, delete, logout"
       assert.equal(typeBook.worksheets[0].getCell("F2").value, label);
       assert.equal((await call("/records/" + saved.id, {method: "DELETE"})).status, 204);
     }
+    const mixedForm = new FormData();
+    const details = [{subtype:'breaststroke',value:400,duration:240},{subtype:'butterfly',value:100,duration:60},{subtype:'freestyle',value:1000,duration:600}];
+    for (const [key,value] of Object.entries({sport:'swimming',details:JSON.stringify(details),occurredAt:'2026-10-20'})) mixedForm.set(key,value);
+    const mixedResponse = await call('/records',{method:'POST',body:mixedForm});
+    assert.equal(mixedResponse.status,201);
+    const mixed = await mixedResponse.json(); assert.equal(mixed.value,1500); assert.equal(mixed.duration,900);
+    const mixedRows = await (await call('/records')).json();
+    assert.equal(mixedRows.filter(r=>r.sport==='swimming').length,1); assert.deepEqual(mixedRows.find(r=>r.id===mixed.id).details,details);
+    const mixedBook = new ExcelJS.Workbook(); await mixedBook.xlsx.load(Buffer.from(await (await call('/export?sport=swimming&subtype=freestyle')).arrayBuffer()));
+    assert.equal(mixedBook.worksheets[0].rowCount,2);assert.equal(mixedBook.worksheets[0].getCell('C2').value,1000);assert.equal(mixedBook.worksheets[0].getCell('G2').value,mixed.id);
+    assert.equal((await call('/records/'+mixed.id,{method:'DELETE'})).status,204);
     const bad = new FormData();
     bad.set("sport", "running");
     bad.set("value", "0");

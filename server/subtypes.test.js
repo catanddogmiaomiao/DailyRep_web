@@ -48,7 +48,9 @@ test('additive database migration preserves an existing record and leaves its su
     db.exec(readFileSync(new URL('../migrations/0001_initial.sql',import.meta.url),'utf8'));
     db.exec("INSERT INTO records VALUES ('old','swimming',500,600,'2026-10-01',NULL)");
     db.exec(readFileSync(new URL('../migrations/0002_record_subtype.sql',import.meta.url),'utf8'));
+    db.exec(readFileSync(new URL('../migrations/0003_record_details.sql',import.meta.url),'utf8'));
     const record = db.prepare('SELECT * FROM records').get();
+    assert.equal(record.details,null);
     assert.equal(record.value,500); assert.equal(record.duration,600); assert.equal(record.subtype,null);
   } finally {db.close();}
 });

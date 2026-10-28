@@ -986,3 +986,9 @@ footer {
 .subtype-breakdown strong {font-size: 24px; color: #c6a75e;}
 .subtype-breakdown small {font-size: 13px; font-weight: normal;}
 .field select:focus-visible, .subtype-filter select:focus-visible {outline: 2px solid #c6a75e; outline-offset: 3px;}
+
+.session-details {margin: 20px 0;}
+.session-details p {color: #a9b4c6; font-size: 14px; line-height: 1.6;}
+.session-detail {position: relative; min-width: 0; margin: 16px 0; padding: 20px; border: 1px solid #c6a75e55; border-radius: 16px;}
+.session-detail legend {color: #c6a75e; padding: 0 8px;}
+.session-detail .detail-remove {position: absolute; right: 8px; top: -10px; width: 48px; height: 48px; display: grid; place-items: center; color: #e8dcc8; background: #26334a; border: 0; border-radius: 12px;}

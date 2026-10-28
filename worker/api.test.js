@@ -13,6 +13,7 @@ test('Cloudflare runtime: single-owner signup, auth, R2 photos, records, real XL
     for (const sql of schema.split(';').map(s=>s.trim()).filter(Boolean)) await env.DB.prepare(sql).run();
     const migration = await readFile(new URL('../migrations/0002_record_subtype.sql',import.meta.url),'utf8');
     await env.DB.prepare(migration.trim().replace(/;$/, '')).run();
+    await env.DB.prepare((await readFile(new URL('../migrations/0003_record_details.sql',import.meta.url),'utf8')).trim().replace(/;$/, '')).run();
     let token = '';
     const call = async (route, init={}) => {
       // Serialize with the same browser multipart encoder before crossing the
@@ -80,6 +81,24 @@ test('Cloudflare runtime: single-owner signup, auth, R2 photos, records, real XL
     for (const [key,val] of Object.entries({sport:'abs',subtype:'freestyle',value:10,duration:60,occurredAt:'2026-10-01'})) invalidType.set(key,String(val));
     assert.equal((await call('/records',{method:'POST',body:invalidType})).status,400);
     for (const id of extraIds) assert.equal((await call('/records/'+id,{method:'DELETE'})).status,204);
+    const multiForm = new FormData();
+    const multiDetails = [{subtype:'breaststroke',value:400,duration:240},{subtype:'butterfly',value:100,duration:60},{subtype:'freestyle',value:1000,duration:600}];
+    for (const [key,val] of Object.entries({sport:'swimming',details:JSON.stringify(multiDetails),occurredAt:'2026-10-20'})) multiForm.set(key,val);
+    multiForm.set('photo',new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB9kAAAAASUVORK5CYII=','base64')],{type:'image/png'}),'shared.png');
+    const multiResponse=await call('/records',{method:'POST',body:multiForm});
+    assert.equal(multiResponse.status,201,await multiResponse.clone().text());
+    const multi=await multiResponse.json();assert.equal(multi.value,1500);assert.equal(multi.duration,900);assert.deepEqual(multi.details,multiDetails);
+    assert.equal((await call('/photos/'+multi.photo)).status,200,'all details share the parent photo');
+    const fetched=await (await call('/records')).json();
+    assert.equal(fetched.filter(r=>r.sport==='swimming').length,1,'three strokes are a single database record');
+    assert.deepEqual(fetched.find(r=>r.id===multi.id).details,multiDetails);
+    const multiBook=new ExcelJS.Workbook();await multiBook.xlsx.load(Buffer.from(await (await call('/export?sport=swimming')).arrayBuffer()));
+    assert.equal(multiBook.worksheets[0].rowCount,4);
+    assert.equal(multiBook.worksheets[0].getCell('G2').value,multi.id);assert.equal(multiBook.worksheets[0].getCell('G4').value,multi.id);
+    const filteredBook=new ExcelJS.Workbook();await filteredBook.xlsx.load(Buffer.from(await (await call('/export?sport=swimming&subtype=butterfly')).arrayBuffer()));
+    assert.equal(filteredBook.worksheets[0].rowCount,2);assert.equal(filteredBook.worksheets[0].getCell('C2').value,100);
+    assert.equal((await call('/records/'+multi.id,{method:'DELETE'})).status,204);
+    assert.equal((await call('/photos/'+multi.photo)).status,404);
     const bad = new FormData();
     for (const [key,value] of Object.entries({sport:'pushups',value:'1.5',duration:'10',occurredAt:'2025-01-01'})) bad.set(key,value);
     assert.equal((await call('/records',{method:'POST',body:bad})).status,400);
