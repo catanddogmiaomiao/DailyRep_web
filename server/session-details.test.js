@@ -46,11 +46,11 @@ test('multi-type swim counts once across all report periods and filters only mat
 
 test('both ab exercises share one check-in and legacy single-type records remain separate',()=>{
   const date=new Date(2026,9,20,10).toISOString();
-  const rows=[{id:'new',sport:'abs',value:15,duration:900,occurredAt:date,details:[{subtype:'situps',value:10,duration:600},{subtype:'abwheel',value:5,duration:300}]},
+  const rows=[{id:'new',sport:'abs',quantityUnit:'reps',value:15,duration:900,occurredAt:date,details:[{subtype:'situps',value:10,duration:600},{subtype:'abwheel',value:5,duration:300}]},
     {id:'old',sport:'abs',value:2,duration:120,subtype:'abwheel',occurredAt:date},
     {id:'unclassified',sport:'abs',value:3,duration:180,occurredAt:date}];
   const all=report(rows,'abs','week',new Date(2026,9,22));
-  assert.equal(all.rows.length,3);assert.equal(all.total,20);
+  assert.equal(all.rows.length,3);assert.equal(all.total,15);assert.equal(all.legacyCount,2);
   const wheel=report(rows,'abs','week',new Date(2026,9,22),'abwheel');
-  assert.equal(wheel.rows.length,2);assert.equal(wheel.total,7);assert.equal(wheel.duration,420);
+  assert.equal(wheel.rows.length,2);assert.equal(wheel.total,5);assert.equal(wheel.duration,420);
 });

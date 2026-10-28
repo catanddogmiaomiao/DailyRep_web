@@ -992,3 +992,9 @@ footer {
 .session-detail {position: relative; min-width: 0; margin: 16px 0; padding: 20px; border: 1px solid #c6a75e55; border-radius: 16px;}
 .session-detail legend {color: #c6a75e; padding: 0 8px;}
 .session-detail .detail-remove {position: absolute; right: 8px; top: -10px; width: 48px; height: 48px; display: grid; place-items: center; color: #e8dcc8; background: #26334a; border: 0; border-radius: 12px;}
+
+.set-editor {display:flex;flex-direction:column;gap:12px;margin:12px 0;}
+.set-row {display:flex;align-items:center;gap:10px;}
+.set-row label {display:flex;align-items:center;gap:12px;flex:1;min-width:0;}
+.set-row input {min-width:0;flex:1;min-height:48px;}
+.set-row button {width:48px;height:48px;display:grid;place-items:center;border:0;border-radius:10px;background:#26334a;color:#e8dcc8;}

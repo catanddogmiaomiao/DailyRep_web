@@ -26,3 +26,7 @@ export const hydrateRecord = record => ({...record, details: record.details ? re
 export const exportDetails = (records, subtype = "") => records.flatMap(record => recordDetails(record)
   .filter(d => !subtype || (subtype === "unclassified" ? !d.subtype : d.subtype === subtype))
   .map(d => ({...record, ...d, checkinId: record.id})));
+
+export const recordUnit = record => ({running: "km", swimming: "m", pushups: "次", abs: record.quantityUnit === "reps" ? "个" : "分钟"})[record.sport];
+export const countableVolume = record => record.sport === "abs" && record.quantityUnit !== "reps" ? 0 : record.value;
+export const formatSets = (sets, unit = "个") => Array.isArray(sets) ? sets.map((reps,index) => `第${index+1}组 ${reps}${unit}`).join(" · ") : "";

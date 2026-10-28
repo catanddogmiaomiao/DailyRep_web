@@ -28,6 +28,7 @@ test('week, month and year filter volume, duration, bars and records by subtype 
       {sport,subtype:first.value,value:999,duration:999,occurredAt:new Date(2025,0,1).toISOString()},
       {sport:'running',value:9,duration:10,occurredAt:time},
     ];
+    if (sport === 'abs') rows.forEach(row => {if (row.sport === 'abs') row.quantityUnit = 'reps';});
     for (const period of ['week','month','year']) {
       const all = report(rows,sport,period,new Date(2026,9,22));
       assert.equal(all.total,350); assert.equal(all.duration,420);
@@ -49,7 +50,9 @@ test('additive database migration preserves an existing record and leaves its su
     db.exec("INSERT INTO records VALUES ('old','swimming',500,600,'2026-10-01',NULL)");
     db.exec(readFileSync(new URL('../migrations/0002_record_subtype.sql',import.meta.url),'utf8'));
     db.exec(readFileSync(new URL('../migrations/0003_record_details.sql',import.meta.url),'utf8'));
+    db.exec(readFileSync(new URL('../migrations/0004_record_quantity_unit.sql',import.meta.url),'utf8'));
     const record = db.prepare('SELECT * FROM records').get();
+    assert.equal(record.quantityUnit,null);
     assert.equal(record.details,null);
     assert.equal(record.value,500); assert.equal(record.duration,600); assert.equal(record.subtype,null);
   } finally {db.close();}

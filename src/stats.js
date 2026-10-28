@@ -1,4 +1,4 @@
-import {subtypeOptions, matchesSubtype, projectRecord} from "./subtypes.js";
+import {subtypeOptions, matchesSubtype, projectRecord, countableVolume} from "./subtypes.js";
 export function report(records, sport, period, anchor = new Date(), subtype = "") {
   const start = new Date(anchor);
   start.setHours(0, 0, 0, 0);
@@ -28,7 +28,7 @@ export function report(records, sport, period, anchor = new Date(), subtype = ""
   if (groups.length && periodRows.some(r => matchesSubtype(r, "unclassified"))) groups.push({value: "unclassified", label: "未分类"});
   const breakdown = groups.map(group => {
     const items = periodRows.filter(r => matchesSubtype(r, group.value)).map(r => projectRecord(r, group.value));
-    return {...group, total: items.reduce((sum, r) => sum + r.value, 0), duration: items.reduce((sum, r) => sum + r.duration, 0), count: items.length};
+    return {...group, total: items.reduce((sum, r) => sum + countableVolume(r), 0), duration: items.reduce((sum, r) => sum + r.duration, 0), setCount: items.reduce((sum,r) => sum+r.details.reduce((n,d) => n+(d.sets?.length || 0),0),0), count: items.length};
   });
   const bars = Array.from({ length: count }, (_, i) => ({
     label:
@@ -53,15 +53,17 @@ export function report(records, sport, period, anchor = new Date(), subtype = ""
                 )) /
                 86400000,
             );
-    bars[i].value += r.value;
+    bars[i].value += countableVolume(r);
   });
   return {
     start,
     end,
     breakdown,
+    setCount: rows.reduce((sum,r) => sum+r.details.reduce((n,d) => n+(d.sets?.length || 0),0),0),
     rows,
     bars,
-    total: rows.reduce((n, r) => n + r.value, 0),
+    total: rows.reduce((n, r) => n + countableVolume(r), 0),
+    legacyCount: sport === "abs" ? rows.filter(r => r.quantityUnit !== "reps").length : 0,
     duration: rows.reduce((n, r) => n + r.duration, 0),
   };
 }

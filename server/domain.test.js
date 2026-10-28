@@ -72,6 +72,7 @@ test("leap month, empty states and year aggregation", () => {
   );
   const record = {
     sport: "abs",
+    quantityUnit: "reps",
     value: 30,
     duration: 1800,
     occurredAt: new Date(2026, 11, 31, 15).toISOString(),

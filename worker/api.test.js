@@ -14,6 +14,7 @@ test('Cloudflare runtime: single-owner signup, auth, R2 photos, records, real XL
     const migration = await readFile(new URL('../migrations/0002_record_subtype.sql',import.meta.url),'utf8');
     await env.DB.prepare(migration.trim().replace(/;$/, '')).run();
     await env.DB.prepare((await readFile(new URL('../migrations/0003_record_details.sql',import.meta.url),'utf8')).trim().replace(/;$/, '')).run();
+    await env.DB.prepare((await readFile(new URL('../migrations/0004_record_quantity_unit.sql',import.meta.url),'utf8')).trim().replace(/;$/, '')).run();
     let token = '';
     const call = async (route, init={}) => {
       // Serialize with the same browser multipart encoder before crossing the
@@ -99,6 +100,18 @@ test('Cloudflare runtime: single-owner signup, auth, R2 photos, records, real XL
     assert.equal(filteredBook.worksheets[0].rowCount,2);assert.equal(filteredBook.worksheets[0].getCell('C2').value,100);
     assert.equal((await call('/records/'+multi.id,{method:'DELETE'})).status,204);
     assert.equal((await call('/photos/'+multi.photo)).status,404);
+    for (const [sport,items,total] of [['abs',[{subtype:'situps',sets:[20,20,15],duration:600},{subtype:'abwheel',sets:[10,10,8],duration:300}],83],['pushups',[{subtype:null,sets:[20,15,10],duration:180}],45]]) {
+      const setsForm = new FormData();
+      for (const [key,val] of Object.entries({sport,details:JSON.stringify(items),occurredAt:'2026-10-20'})) setsForm.set(key,val);
+      const response = await call('/records',{method:'POST',body:setsForm}); assert.equal(response.status,201,await response.clone().text());
+      const row=await response.json();assert.equal(row.value,total);assert.deepEqual(row.details[0].sets,items[0].sets);
+      if(sport==='abs')assert.equal(row.quantityUnit,'reps');
+      const fetched=await (await call('/records')).json();assert.deepEqual(fetched.find(r=>r.id===row.id).details[0].sets,items[0].sets);
+      const setsBook=new ExcelJS.Workbook();await setsBook.xlsx.load(Buffer.from(await (await call('/export?sport='+sport)).arrayBuffer()));
+      assert.match(setsBook.worksheets[0].getCell('H2').value,/第1组 20/);
+      assert.equal(setsBook.worksheets[0].getCell('D2').value,sport==='abs'?'个':'次');
+      assert.equal((await call('/records/'+row.id,{method:'DELETE'})).status,204);
+    }
     const bad = new FormData();
     for (const [key,value] of Object.entries({sport:'pushups',value:'1.5',duration:'10',occurredAt:'2025-01-01'})) bad.set(key,value);
     assert.equal((await call('/records',{method:'POST',body:bad})).status,400);

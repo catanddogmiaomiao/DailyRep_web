@@ -21,13 +21,13 @@ import {
   Check,
 } from "lucide-react";
 import { report, movePeriod } from "./stats";
-import {subtypeOptions, subtypeLabel, matchesSubtype, recordDetails, projectRecord} from "./subtypes.js";
+import {subtypeOptions, subtypeLabel, matchesSubtype, recordDetails, projectRecord, recordUnit, formatSets} from "./subtypes.js";
 import "./style.css";
 const sports = {
   running: { name: "跑步", unit: "km", icon: Footprints },
   swimming: { name: "游泳", unit: "m", icon: Waves },
   pushups: { name: "俯卧撑", unit: "次", icon: Dumbbell },
-  abs: { name: "腹肌训练", unit: "分钟", icon: Activity },
+  abs: { name: "腹肌训练", unit: "个", icon: Activity },
 };
 const fmt = (n) => Number(n.toFixed(2)).toLocaleString("zh-CN");
 const localTime = () => {
@@ -347,8 +347,9 @@ function App() {
                 </strong>
               </div>
               <div>
-                <span>打卡次数</span>
+                <span>{stats.setCount > 0 ? "组数 / 打卡次数" : "打卡次数"}</span>
                 <strong>
+                  {stats.setCount > 0 && <>{stats.setCount}<small>组 / </small></>}
                   {stats.rows.length}
                   <small>次</small>
                 </strong>
@@ -368,10 +369,11 @@ function App() {
                 strokeWidth={1}
               />
             </section>
+            {stats.legacyCount > 0 && <p className="empty">本周期含 {stats.legacyCount} 条旧版腹肌计时记录：时长保留，分钟数不计入个数统计。原记录见下方。</p>}
             {!subtype && stats.breakdown.length > 0 && <section className="subtype-breakdown" aria-label="分类统计">
               {stats.breakdown.map(group => <button key={group.value} onClick={() => setSubtype(group.value)}>
                 <span>{group.label}</span><strong>{fmt(group.total)} <small>{selected.unit}</small></strong>
-                <small>{group.count} 次打卡 · {Math.floor(group.duration / 60)}分{group.duration % 60}秒</small>
+                <small>{group.setCount > 0 ? group.setCount + "组 · " : ""}{group.count} 次打卡 · {Math.floor(group.duration / 60)}分{group.duration % 60}秒</small>
               </button>)}
             </section>}
             <section className="chart-card">
@@ -406,7 +408,7 @@ function App() {
                   <thead>
                     <tr>
                       <th>运动时间</th>
-                      {subtypeOptions(page).length > 0 && <th>类型</th>}
+                      {(subtypeOptions(page).length > 0 || page === "pushups") && <th>训练内容</th>}
                       <th>运动量</th>
                       <th>时长</th>
                       <th>打卡照片</th>
@@ -424,9 +426,9 @@ function App() {
                               hour12: false,
                             })}
                           </td>
-                          {subtypeOptions(page).length > 0 && <td>{recordDetails(r).map(d => <div key={d.subtype || "unclassified"}>{subtypeLabel(page,d.subtype)} · {fmt(d.value)} {selected.unit} · {Math.floor(d.duration/60)}分{d.duration%60}秒</div>)}</td>}
+                          {(subtypeOptions(page).length > 0 || page === "pushups") && <td>{recordDetails(r).map(d => <div key={d.subtype || "unclassified"}>{page === "pushups" ? "俯卧撑" : subtypeLabel(page,d.subtype)} · {d.sets ? formatSets(d.sets,recordUnit(r)) : fmt(d.value)+recordUnit(r)} · {Math.floor(d.duration/60)}分{d.duration%60}秒</div>)}</td>}
                           <td>
-                            {fmt(r.value)} {selected.unit}
+                            {fmt(r.value)} {recordUnit(r)}
                           </td>
                           <td>
                             {Math.floor(r.duration / 60)} 分 {r.duration % 60}{" "}
@@ -661,13 +663,24 @@ function Login({ onLogin, error }) {
     </div>
   );
 }
+function SetInputs({values, onChange, disabled}) {
+  return <div className="set-editor">
+    {values.map((value,index) => <div className="set-row" key={index}>
+      <label>第 {index+1} 组 <input aria-label={`第${index+1}组个数`} type="number" min="1" max="100000" step="1" required disabled={disabled} value={value} onChange={e => onChange(values.map((v,i) => i === index ? e.target.value : v))} placeholder="个数" /></label><span>个</span>
+      {values.length > 1 && <button type="button" aria-label={`移除第${index+1}组`} disabled={disabled} onClick={() => onChange(values.filter((_,i) => i !== index))}><X size={18}/></button>}
+    </div>)}
+    {values.length < 100 && <button type="button" className="outline" disabled={disabled} onClick={() => onChange([...values,""])}><Plus size={18}/>添加一组</button>}
+    <p>{values.length} 组 · 合计 {values.reduce((sum,v) => sum+(Number(v)||0),0)} 个</p>
+  </div>;
+}
 function Checkin({ sport, onClose, onSaved }) {
   const s = sports[sport],
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [file, setFile] = useState(null),
     [preview, setPreview] = useState(null),
-    [details, setDetails] = useState([{id: "0", subtype: subtypeOptions(sport)[0]?.value || ""}]);
+    [details, setDetails] = useState([{id: "0", subtype: subtypeOptions(sport)[0]?.value || "", sets: [""]}]),
+    [pushupSets, setPushupSets] = useState([""]);
   const nextDetailId = useRef(1);
   const hasDetails = subtypeOptions(sport).length > 0;
   const camera = useRef(),
@@ -727,10 +740,11 @@ function Checkin({ sport, onClose, onSaved }) {
         const entries = details.map(d => {
           const minutes = Number(f.get(`minutes_${d.id}`)), seconds = Number(f.get(`seconds_${d.id}`));
           if (!Number.isInteger(minutes) || minutes < 0 || !Number.isInteger(seconds) || seconds < 0 || seconds > 59) throw new Error("请检查每项明细的时长");
-          return {subtype: d.subtype, value: Number(f.get(`value_${d.id}`)), duration: minutes*60+seconds};
+          return {subtype: d.subtype, value: Number(f.get(`value_${d.id}`)), duration: minutes*60+seconds, ...(sport === "abs" ? {sets: d.sets.map(Number)} : {})};
         });
         f.set("details", JSON.stringify(entries));
       }
+      if (sport === "pushups") f.set("details", JSON.stringify([{subtype:null,sets:pushupSets.map(Number),duration:minutes*60+seconds}]));
       f.set("sport", sport);
       f.set("duration", String(minutes * 60 + seconds));
       f.set("occurredAt", new Date(f.get("occurredAt")).toISOString());
@@ -782,7 +796,8 @@ function Checkin({ sport, onClose, onSaved }) {
                   {subtypeOptions(sport).filter(option => option.value === detail.subtype || !details.some(d => d.subtype === option.value)).map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </label>
-              <label className="field">{sport === "swimming" ? "距离" : "训练量"}（{s.unit}）<input aria-label={`${subtypeLabel(sport,detail.subtype)}运动量`} name={`value_${detail.id}`} type="number" min="0.01" max="100000" step="0.01" required placeholder="0" /></label>
+              {sport === "abs" ? <SetInputs values={detail.sets} disabled={busy} onChange={sets => setDetails(rows => rows.map(d => d.id === detail.id ? {...d,sets} : d))} /> : (
+              <label className="field">{sport === "swimming" ? "距离" : "训练量"}（{s.unit}）<input aria-label={`${subtypeLabel(sport,detail.subtype)}运动量`} name={`value_${detail.id}`} type="number" min="0.01" max="100000" step="0.01" required placeholder="0" /></label>              )}
               <div className="field"><span>时长</span><div className="duration-input">
                 <label><input aria-label={`${subtypeLabel(sport,detail.subtype)}分钟数`} name={`minutes_${detail.id}`} type="number" min="0" max="1440" step="1" required placeholder="0" />分钟</label>
                 <label><input aria-label={`${subtypeLabel(sport,detail.subtype)}秒数`} name={`seconds_${detail.id}`} type="number" min="0" max="59" step="1" required defaultValue="0" />秒</label>
@@ -790,11 +805,11 @@ function Checkin({ sport, onClose, onSaved }) {
             </fieldset>)}
             {details.length < subtypeOptions(sport).length && <button type="button" className="outline" disabled={busy} onClick={() => {
               const next = subtypeOptions(sport).find(option => !details.some(d => d.subtype === option.value));
-              if (next) setDetails(rows => [...rows,{id:String(nextDetailId.current++),subtype:next.value}]);
+              if (next) setDetails(rows => [...rows,{id:String(nextDetailId.current++),subtype:next.value,sets:[""]}]);
             }}><Plus size={18} />{sport === "swimming" ? "添加泳姿" : "添加训练项目"}</button>}
             <p>以上所有明细合计为 1 次打卡。</p>
           </div> : <>
-          <label className="field">
+          <div className="field">
             {sport === "running"
               ? "跑量"
               : sport === "swimming"
@@ -803,16 +818,19 @@ function Checkin({ sport, onClose, onSaved }) {
                   ? "俯卧撑次数"
                   : "训练时长"}
             （{s.unit}）
+            {sport === "pushups" ? <SetInputs values={pushupSets} onChange={setPushupSets} disabled={busy} /> : (
             <input
               name="value"
+              aria-label="运动量"
               type="number"
               min={sport === "pushups" ? "1" : "0.01"}
               step={sport === "pushups" ? "1" : "0.01"}
               max="100000"
               required
               placeholder="0"
-            />
-          </label>
+            />            )}
+
+          </div>
           <div className="field">
             <span>运动时长</span>
             <div className="duration-input">
