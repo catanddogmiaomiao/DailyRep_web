@@ -1,4 +1,5 @@
-export function report(records, sport, period, anchor = new Date()) {
+import {subtypeOptions, matchesSubtype} from "./subtypes.js";
+export function report(records, sport, period, anchor = new Date(), subtype = "") {
   const start = new Date(anchor);
   start.setHours(0, 0, 0, 0);
   let count;
@@ -16,12 +17,19 @@ export function report(records, sport, period, anchor = new Date()) {
   if (period === "week") end.setDate(end.getDate() + 7);
   else if (period === "month") end.setMonth(end.getMonth() + 1);
   else end.setFullYear(end.getFullYear() + 1);
-  const rows = records.filter(
+  const periodRows = records.filter(
     (r) =>
       r.sport === sport &&
       new Date(r.occurredAt) >= start &&
       new Date(r.occurredAt) < end,
   );
+  const rows = periodRows.filter(r => matchesSubtype(r, subtype));
+  const groups = [...subtypeOptions(sport)];
+  if (groups.length && periodRows.some(r => !r.subtype)) groups.push({value: "unclassified", label: "未分类"});
+  const breakdown = groups.map(group => {
+    const items = periodRows.filter(r => matchesSubtype(r, group.value));
+    return {...group, total: items.reduce((sum, r) => sum + r.value, 0), duration: items.reduce((sum, r) => sum + r.duration, 0), count: items.length};
+  });
   const bars = Array.from({ length: count }, (_, i) => ({
     label:
       period === "week"
@@ -50,6 +58,7 @@ export function report(records, sport, period, anchor = new Date()) {
   return {
     start,
     end,
+    breakdown,
     rows,
     bars,
     total: rows.reduce((n, r) => n + r.value, 0),

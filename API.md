@@ -11,13 +11,23 @@ Base: `/api`. JSON responses. Error bodies: `{ "error": "…" }`. Login via emai
 | GET | `/me` | `{email}` |
 | POST | `/logout` | 204 |
 | GET | `/records` | All personal records, newest first |
-| POST | `/records` | Multipart `sport,value,duration,occurredAt` and optional `photo` → record (201) |
+| POST | `/records` | Multipart `sport,value,duration,occurredAt`, optional `subtype` and `photo` → record (201) |
 | DELETE | `/records/:id` | Deletes record and photo (204) |
 | GET | `/photos/:id` | Authenticated image bytes |
-| GET | `/export?sport=running` | `.xlsx` of selected sport; omit sport for all records |
+| GET | `/export?sport=swimming&subtype=freestyle` | `.xlsx` of selected sport/type; omit subtype for all types, use `unclassified` for legacy records; omit sport for all sports |
 
 Record: `{ id, sport, value, duration, occurredAt, photo }`. `photo` is a filename identifier or null; never a public URL. `sport` is `running`, `swimming`, `pushups`, or `abs`. `value` is >0 and ≤100000, pushups integer; units km / m / repetitions / minutes. `duration` is an integer 1–86400 seconds. `occurredAt` must be a valid, non-future date; canonical storage format is UTC ISO8601. Photo JPEG/PNG/WebP, max8MB; actual file signature checked and used as the stored Content-Type; inaccurate multipart MIME labels are tolerated. Responses use `Cache-Control: no-store`. Sessions expire after7 days.
 
 App repo duplicates the small calendar aggregation helper to remain independently buildable; keep both `src/stats.js` copies consistent. Mobile tokens belong in SecureStore; browser uses the cookie, not localStorage. The service is deliberately single-account. Cloudflare deployment supports invitation-protected first-owner registration; creating the first account closes registration atomically. The retained legacy Express server uses OWNER_EMAIL/OWNER_PASSWORD initialization instead. No multi-user access is offered.
 
 Mobile clients convert selected/captured photos (including iPhone HEIC) to a real JPEG before upload, preserving aspect ratio and limiting the long edge to 2400px. The 8MB limit applies to the converted file. Browser uploads must already be JPEG/PNG/WebP. Unsupported or forged bytes are rejected.
+
+## Record subtypes (2026-10-28)
+
+Records additionally return `subtype: string | null`. Swimming accepts `breaststroke` (蛙泳), `butterfly` (蝶泳), `freestyle` (自由泳); abs accepts `situps` (仰卧起坐), `abwheel` (腹肌轮). Running/pushups do not accept a subtype. Mismatched or unknown values return 400. New app/web forms always send the selected subtype for swimming/abs; omission remains accepted for older installed clients and is stored as null, displayed as 未分类. No historical type is inferred.
+
+One check-in records one type with its own volume and duration. Additional types are separate check-ins. Swimming retains meters; abs retains the existing minutes volume and a separately recorded duration in seconds. Week/month/year reports filter volume, duration, bars and recent records together. The all-types view additionally summarizes each type, including unclassified records when present.
+
+Excel appends a Chinese 运动类型 column at F and preserves the original five columns. An export follows the selected type over all available history, as before; report period does not limit export. Both independently buildable repositories keep identical `src/stats.js` and `src/subtypes.js` copies.
+
+Cloudflare applies additive migration `0002_record_subtype.sql`; the retained SQLite server detects and adds the nullable column at startup. Existing records/photos/accounts remain in place. Always use explicit column lists for future INSERT statements.

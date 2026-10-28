@@ -35,3 +35,13 @@
 - Worker按实际JPEG/PNG/WebP文件签名确定Content-Type，不再把不准确的multipart MIME视为图片损坏；不支持的内容仍拒绝。
 - Cloudflare真实本地运行时回归测试：把PNG内容标为JPEG上传成功，读取仍为image/png；伪造PNG内容仍返回400。
 - 修复已发布，版本6b7ac98e-29b4-492b-9372-7e163ef16fea。未读取或修改用户线上照片和记录。
+
+
+## 2026-10-28：分类打卡及报告
+
+- 新增可空subtype字段：蛙泳breaststroke、蝶泳butterfly、自由泳freestyle；仰卧起坐situps、腹肌轮abwheel。验证拒绝不存在和跨项目类型，兼容旧客户端省略类型。
+- App／网页打卡加入下拉选择；报告加入分类总量、总时长和次数，并同步筛选周月年柱状图与最近记录。历史无类型数据单列未分类。两个仓库的统计和类型定义源码一致。
+- Express测试9项、Cloudflare真实本地运行时测试1项通过，覆盖五种类型持久化、非法类型拒绝、分类Excel真实文件、空值兼容和增量迁移保存旧数据；网页生产构建通过。
+- App测试7项、TypeScript检查和iOS生产Hermes JS包导出通过。未新增原生依赖。Xcode命令行原生编译受本次运行环境服务权限限制，提示workspace无法识别；没有将其记为编译通过。未取得真机交互和截图验收结果。
+
+- Cloudflare增量迁移0002成功，已部署版本6ba267ba-6a22-4213-9237-25251b1a9add；首次健康请求遇到ECONNRESET，独立重试返回{ok:true}。未创建或删除线上运动记录来测试。

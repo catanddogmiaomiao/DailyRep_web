@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import { validateRecord, sports } from '../server/domain.js';
+import {subtypeOptions, subtypeLabel, matchesSubtype} from '../src/subtypes.js';
 
 const encoder = new TextEncoder();
 const TTL = 7 * 86400000;
@@ -121,7 +122,7 @@ async function api(request, env) {
       await env.PHOTOS.put(photo, bytes, {httpMetadata: {contentType: type}});
     }
     const record = {id: random(16), ...data, photo};
-    try { await env.DB.prepare('INSERT INTO records VALUES (?,?,?,?,?,?)').bind(record.id, data.sport, data.value, data.duration, data.occurredAt, photo).run(); }
+    try { await env.DB.prepare('INSERT INTO records(id,sport,value,duration,occurredAt,photo,subtype) VALUES (?,?,?,?,?,?,?)').bind(record.id, data.sport, data.value, data.duration, data.occurredAt, photo, data.subtype).run(); }
     catch (e) { if (photo) await env.PHOTOS.delete(photo); throw e; }
     return json(record, 201);
   }
@@ -142,13 +143,15 @@ async function api(request, env) {
   if (route === '/export' && method === 'GET') {
     const sport = url.searchParams.get('sport');
     const query = sports.includes(sport) ? env.DB.prepare('SELECT * FROM records WHERE sport=? ORDER BY occurredAt DESC').bind(sport) : env.DB.prepare('SELECT * FROM records ORDER BY occurredAt DESC');
-    const rows = (await query.all()).results;
+    const subtype = url.searchParams.get('subtype') || '';
+    if (subtype && subtype !== 'unclassified' && !subtypeOptions(sport).some(s => s.value === subtype)) fail('请选择有效的运动类型',400);
+    const rows = (await query.all()).results.filter(r => matchesSubtype(r, subtype));
     const book = new ExcelJS.Workbook(), sheet = book.addWorksheet('运动记录');
-    sheet.columns = [{header:'项目',key:'sport',width:15},{header:'运动时间 (UTC)',key:'occurredAt',width:28},{header:'运动量',key:'value',width:14},{header:'单位',key:'unit',width:12},{header:'时长（秒）',key:'duration',width:16}];
+    sheet.columns = [{header:'项目',key:'sport',width:15},{header:'运动时间 (UTC)',key:'occurredAt',width:28},{header:'运动量',key:'value',width:14},{header:'单位',key:'unit',width:12},{header:'时长（秒）',key:'duration',width:16},{header:'运动类型',key:'subtype',width:18}];
     const names = {running:'跑步',swimming:'游泳',pushups:'俯卧撑',abs:'腹肌训练'}, units = {running:'km',swimming:'m',pushups:'次',abs:'分钟'};
-    rows.forEach(row => sheet.addRow({...row,sport:names[row.sport],unit:units[row.sport]}));
+    rows.forEach(row => sheet.addRow({...row,sport:names[row.sport],unit:units[row.sport],subtype:subtypeLabel(row.sport,row.subtype)}));
     sheet.getRow(1).font = {bold:true,color:{argb:'FF1F2A44'}};
-    sheet.views = [{state:'frozen',ySplit:1}]; sheet.autoFilter = 'A1:E1';
+    sheet.views = [{state:'frozen',ySplit:1}]; sheet.autoFilter = 'A1:F1';
     return new Response(await book.xlsx.writeBuffer(), {headers: {'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="dailyRep.xlsx"'}});
   }
   fail('接口不存在', 404);

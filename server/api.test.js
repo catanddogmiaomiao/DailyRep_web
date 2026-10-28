@@ -110,6 +110,20 @@ test("private API: login, records, protected photo, XLSX export, delete, logout"
     const book = new ExcelJS.Workbook();
     await book.xlsx.load(Buffer.from(await exported.arrayBuffer()));
     assert.equal(book.worksheets[0].getCell("C2").value, 7.25);
+    for (const [sport, subtype, label] of [["swimming", "freestyle", "自由泳"], ["abs", "abwheel", "腹肌轮"]]) {
+      const typed = new FormData();
+      for (const [key, value] of Object.entries({sport, subtype, value: "10", duration: "120", occurredAt: "2026-10-01"})) typed.set(key, value);
+      const response = await call("/records", {method: "POST", body: typed});
+      assert.equal(response.status, 201);
+      const saved = await response.json();
+      assert.equal(saved.subtype, subtype);
+      const exportedType = await call(`/export?sport=${sport}&subtype=${subtype}`);
+      const typeBook = new ExcelJS.Workbook();
+      await typeBook.xlsx.load(Buffer.from(await exportedType.arrayBuffer()));
+      assert.equal(typeBook.worksheets[0].rowCount, 2);
+      assert.equal(typeBook.worksheets[0].getCell("F2").value, label);
+      assert.equal((await call("/records/" + saved.id, {method: "DELETE"})).status, 204);
+    }
     const bad = new FormData();
     bad.set("sport", "running");
     bad.set("value", "0");

@@ -8,6 +8,7 @@ import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync, unlinkSync, existsSync } from "node:fs";
 import path from "node:path";
 import { validateRecord, sports } from "./domain.js";
+import {subtypeOptions, subtypeLabel, matchesSubtype} from "../src/subtypes.js";
 const app = express(),
   dir = path.resolve(process.env.DATA_DIR || "data");
 mkdirSync(path.join(dir, "photos"), { recursive: true });
@@ -15,6 +16,9 @@ const db = new DatabaseSync(path.join(dir, "dailyrep.sqlite"));
 db.exec(
   `PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS account (id INTEGER PRIMARY KEY CHECK(id=1), email TEXT NOT NULL, salt TEXT NOT NULL, hash TEXT NOT NULL); CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, expires INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS records(id TEXT PRIMARY KEY,sport TEXT NOT NULL,value REAL NOT NULL,duration INTEGER NOT NULL,occurredAt TEXT NOT NULL,photo TEXT);`,
 );
+if (!db.prepare("PRAGMA table_info(records)").all().some(column => column.name === "subtype")) {
+  db.exec("ALTER TABLE records ADD COLUMN subtype TEXT");
+}
 if (!db.prepare("SELECT id FROM account").get()) {
   const email = process.env.OWNER_EMAIL?.trim().toLowerCase(),
     password = process.env.OWNER_PASSWORD;
@@ -146,13 +150,14 @@ app.post("/api/records", upload.single("photo"), (req, res) => {
       photo = req.file.filename;
     }
     const record = { id: randomBytes(16).toString("hex"), ...r, photo };
-    db.prepare("INSERT INTO records VALUES (?,?,?,?,?,?)").run(
+    db.prepare("INSERT INTO records(id,sport,value,duration,occurredAt,photo,subtype) VALUES (?,?,?,?,?,?,?)").run(
       record.id,
       r.sport,
       r.value,
       r.duration,
       r.occurredAt,
       photo,
+      r.subtype,
     );
     res.status(201).json(record);
   } catch (e) {
@@ -185,6 +190,7 @@ app.get("/api/export", (req, res, next) => {
       { header: "运动量", key: "value", width: 14 },
       { header: "单位", key: "unit", width: 12 },
       { header: "时长（秒）", key: "duration", width: 16 },
+      { header: "运动类型", key: "subtype", width: 18 },
     ];
     const names = {
         running: "跑步",
@@ -200,12 +206,14 @@ app.get("/api/export", (req, res, next) => {
           )
           .all(req.query.sport)
       : db.prepare("SELECT * FROM records ORDER BY occurredAt DESC").all();
-    rows.forEach((r) =>
-      sheet.addRow({ ...r, sport: names[r.sport], unit: units[r.sport] }),
+    const subtype = req.query.subtype || "";
+    if (subtype && subtype !== "unclassified" && !subtypeOptions(req.query.sport).some(s => s.value === subtype)) return res.status(400).json({error: "请选择有效的运动类型"});
+    rows.filter(r => matchesSubtype(r, subtype)).forEach((r) =>
+      sheet.addRow({ ...r, sport: names[r.sport], unit: units[r.sport], subtype: subtypeLabel(r.sport,r.subtype) }),
     );
     sheet.getRow(1).font = { bold: true, color: { argb: "FF1F2A44" } };
     sheet.views = [{ state: "frozen", ySplit: 1 }];
-    sheet.autoFilter = "A1:E1";
+    sheet.autoFilter = "A1:F1";
     res.attachment("dailyRep.xlsx");
     res.type(
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

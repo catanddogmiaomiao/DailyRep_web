@@ -11,6 +11,8 @@ test('Cloudflare runtime: single-owner signup, auth, R2 photos, records, real XL
     const env = await server.getWorker().getEnv();
     const schema = await readFile(new URL('../migrations/0001_initial.sql',import.meta.url),'utf8');
     for (const sql of schema.split(';').map(s=>s.trim()).filter(Boolean)) await env.DB.prepare(sql).run();
+    const migration = await readFile(new URL('../migrations/0002_record_subtype.sql',import.meta.url),'utf8');
+    await env.DB.prepare(migration.trim().replace(/;$/, '')).run();
     let token = '';
     const call = async (route, init={}) => {
       // Serialize with the same browser multipart encoder before crossing the
@@ -55,6 +57,29 @@ test('Cloudflare runtime: single-owner signup, auth, R2 photos, records, real XL
     assert.equal(exported.status,200,await exported.clone().text().then(t=>t.slice(0,100)));
     await book.xlsx.load(Buffer.from(await exported.arrayBuffer()));
     assert.equal(book.worksheets[0].getCell('C2').value,7.25);
+    // Verify persistence, history compatibility and filtered real Excel files.
+    const extraIds = [];
+    for (const [sport,subtype,value] of [['swimming','breaststroke',500],['swimming','butterfly',200],['swimming','freestyle',800],['abs','situps',10],['abs','abwheel',5],['swimming',null,100]]) {
+      const body = new FormData();
+      for (const [key,val] of Object.entries({sport,value,duration:300,occurredAt:'2026-10-01T08:00:00Z',...(subtype ? {subtype} : {})})) body.set(key,String(val));
+      const response = await call('/records',{method:'POST',body});
+      assert.equal(response.status,201,await response.clone().text());
+      const row = await response.json(); assert.equal(row.subtype,subtype); extraIds.push(row.id);
+    }
+    const saved = await (await call('/records')).json();
+    assert.equal(saved.filter(r => r.subtype).length,5);
+    for (const [sport,subtype,label,value] of [['swimming','freestyle','自由泳',800],['abs','abwheel','腹肌轮',5],['swimming','unclassified','未分类',100]]) {
+      const response = await call(`/export?sport=${sport}&subtype=${subtype}`);
+      assert.equal(response.status,200);
+      const xlsx = new ExcelJS.Workbook(); await xlsx.xlsx.load(Buffer.from(await response.arrayBuffer()));
+      const sheet = xlsx.worksheets[0]; assert.equal(sheet.rowCount,2);
+      assert.equal(sheet.getCell('C2').value,value); assert.equal(sheet.getCell('F2').value,label);
+    }
+    assert.equal((await call('/export?sport=abs&subtype=freestyle')).status,400);
+    const invalidType = new FormData();
+    for (const [key,val] of Object.entries({sport:'abs',subtype:'freestyle',value:10,duration:60,occurredAt:'2026-10-01'})) invalidType.set(key,String(val));
+    assert.equal((await call('/records',{method:'POST',body:invalidType})).status,400);
+    for (const id of extraIds) assert.equal((await call('/records/'+id,{method:'DELETE'})).status,204);
     const bad = new FormData();
     for (const [key,value] of Object.entries({sport:'pushups',value:'1.5',duration:'10',occurredAt:'2025-01-01'})) bad.set(key,value);
     assert.equal((await call('/records',{method:'POST',body:bad})).status,400);

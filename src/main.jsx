@@ -21,6 +21,7 @@ import {
   Check,
 } from "lucide-react";
 import { report, movePeriod } from "./stats";
+import {subtypeOptions, subtypeLabel, matchesSubtype} from "./subtypes.js";
 import "./style.css";
 const sports = {
   running: { name: "跑步", unit: "km", icon: Footprints },
@@ -50,6 +51,7 @@ function App() {
     [records, setRecords] = useState([]),
     [page, setPage] = useState("home"),
     [period, setPeriod] = useState("week"),
+    [subtype, setSubtype] = useState(""),
     [anchor, setAnchor] = useState(new Date()),
     [modal, setModal] = useState(false),
     [error, setError] = useState(""),
@@ -98,6 +100,7 @@ function App() {
   };
   const go = (key) => {
     setPage(key);
+    setSubtype("");
     setPeriod("week");
     setAnchor(new Date());
   };
@@ -119,11 +122,11 @@ function App() {
       />
     );
   const selected = sports[page],
-    stats = selected ? report(records, page, period, anchor) : null;
+    stats = selected ? report(records, page, period, anchor, subtype) : null;
   async function exportFile() {
     setExporting(true);
     try {
-      const r = await fetch("/api/export?sport=" + page);
+      const r = await fetch("/api/export?sport=" + page + (subtype ? "&subtype=" + encodeURIComponent(subtype) : ""));
       if (!r.ok) throw new Error("导出失败，请重新登录或稍后重试");
       const u = URL.createObjectURL(await r.blob()),
         a = document.createElement("a");
@@ -324,6 +327,13 @@ function App() {
                 </button>
               </div>
             </div>
+            {subtypeOptions(page).length > 0 && <label className="subtype-filter">按类型统计
+              <select value={subtype} onChange={e => setSubtype(e.target.value)}>
+                <option value="">全部类型</option>
+                {subtypeOptions(page).map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                <option value="unclassified">未分类（旧记录）</option>
+              </select>
+            </label>}
             <section className="report-summary beige">
               <div>
                 <span>
@@ -358,6 +368,12 @@ function App() {
                 strokeWidth={1}
               />
             </section>
+            {!subtype && stats.breakdown.length > 0 && <section className="subtype-breakdown" aria-label="分类统计">
+              {stats.breakdown.map(group => <button key={group.value} onClick={() => setSubtype(group.value)}>
+                <span>{group.label}</span><strong>{fmt(group.total)} <small>{selected.unit}</small></strong>
+                <small>{group.count} 次打卡 · {Math.floor(group.duration / 60)}分{group.duration % 60}秒</small>
+              </button>)}
+            </section>}
             <section className="chart-card">
               <div className="section-heading">
                 <h2>运动量趋势</h2>
@@ -382,7 +398,7 @@ function App() {
               <div className="section-heading">
                 <h2>最近记录</h2>
                 <span>
-                  {records.filter((r) => r.sport === page).length} 条记录
+                  {records.filter((r) => r.sport === page && matchesSubtype(r, subtype)).length} 条记录
                 </span>
               </div>
               <div className="table-wrap">
@@ -390,6 +406,7 @@ function App() {
                   <thead>
                     <tr>
                       <th>运动时间</th>
+                      {subtypeOptions(page).length > 0 && <th>类型</th>}
                       <th>运动量</th>
                       <th>时长</th>
                       <th>打卡照片</th>
@@ -398,7 +415,7 @@ function App() {
                   </thead>
                   <tbody>
                     {records
-                      .filter((r) => r.sport === page)
+                      .filter((r) => r.sport === page && matchesSubtype(r, subtype))
                       .map((r) => (
                         <tr key={r.id}>
                           <td>
@@ -406,6 +423,7 @@ function App() {
                               hour12: false,
                             })}
                           </td>
+                          {subtypeOptions(page).length > 0 && <td>{subtypeLabel(page, r.subtype)}</td>}
                           <td>
                             {fmt(r.value)} {selected.unit}
                           </td>
@@ -657,7 +675,7 @@ function Checkin({ sport, onClose, onSaved }) {
       if (e.key === "Escape" && !busy) onClose();
       if (e.key === "Tab") {
         const nodes = [
-          ...dialog.current.querySelectorAll("button,input"),
+          ...dialog.current.querySelectorAll("button,input,select"),
         ].filter((n) => !n.disabled && n.type !== "file");
         if (e.shiftKey && document.activeElement === nodes[0]) {
           e.preventDefault();
@@ -741,6 +759,13 @@ function Checkin({ sport, onClose, onSaved }) {
             />
             <small>默认当前时间，可修改补打卡</small>
           </label>
+          {subtypeOptions(sport).length > 0 && <label className="field">
+            {sport === "swimming" ? "泳姿" : "训练类型"}
+            <select name="subtype" required defaultValue={subtypeOptions(sport)[0].value}>
+              {subtypeOptions(sport).map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+            <small>以下运动量和时长计入所选类型，其他类型可另打一次卡。</small>
+          </label>}
           <label className="field">
             {sport === "running"
               ? "跑量"
