@@ -1,6 +1,6 @@
 # dailyRep Web + API
 
-当前简短网址：[rep.book2audiogo.com](https://rep.book2audiogo.com)。与原workers.dev地址连接同一个Worker、D1和私有R2。首次换网址需重新登录，原网址与已安装App的后端地址继续有效。
+当前简短网址：[dailyrep-j7h.pages.dev](https://dailyrep-j7h.pages.dev)。通过同账号的Pages服务绑定连接原Worker、D1和私有R2，所有请求保留原始来源和登录Cookie。首次换网址需重新登录，原网址与已安装App的后端地址继续有效。
 
 网页交互回归可运行 `npm run test:ui`，验证周／月／年切换、Excel下载链接及失败提示。装饰背景不接收点击，避免覆盖顶部统计工具栏。Excel生成后保留手动保存链接，切换项目或筛选后释放下载资源。
 
@@ -108,3 +108,6 @@ npm run build
 可选100／150天或自定天数、结束日期，设置日／周／月／年重复。阶段结束后可继续到110／120天或自定新目标，沿用同一计划和打卡记录。支持暂停顺延、实际训练天数与训练日连续完成统计、可选记录关联及报告筛选。iPhone新增本地系统通知与iOS17+桌面小组件，网页可管理同一计划并按计划导出Excel。
 
 安装更新、提醒覆盖范围与小组件连接步骤见 [使用说明](docs/TRAINING_PLANS.md)。新增原生模块需重新生成工程、安装Pods并在Xcode重新安装，Expo Go不包含这些模块。后端需先应用0005迁移；既有记录保留，planId为空即自由打卡。
+
+
+`pages/` 只提供dailyRep独立网址入口，转发到现有dailyrep Worker，不复制账号或训练数据库。常规 `npm run cf:deploy` 更新Worker后此网址自动使用新版本。仅更改入口绑定时运行 `npx wrangler pages deploy --cwd pages --project-name dailyrep --branch main`。
