@@ -9,6 +9,7 @@
     "build": "vite build --configLoader runner",
     "start": "NODE_ENV=production node --env-file-if-exists=.env server/index.js",
     "test": "node --test server/*.test.js",
+    "test:ui": "node scripts/verify-web-dom.cjs",
     "cf:dev": "npm run build && wrangler dev",
     "cf:deploy": "npm test && npm run test:worker && npm run build && node scripts/deploy-cloudflare.mjs",
     "cf:migrate": "wrangler d1 migrations apply dailyrep --remote",
@@ -25,6 +26,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "jsdom": "^29.1.1",
     "vite": "^7.0.0",
     "wrangler": "^4.153.0"
   },

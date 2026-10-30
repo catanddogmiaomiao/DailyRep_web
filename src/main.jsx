@@ -64,6 +64,9 @@ function App() {
     [loading, setLoading] = useState(false),
     [photo, setPhoto] = useState(null),
     [exporting, setExporting] = useState(false);
+  const [download,setDownload] = useState(null);
+  useEffect(()=>()=>{if(download)URL.revokeObjectURL(download.url);},[download]);
+  useEffect(()=>{setDownload(null);},[page,subtype,planFilter,user]);
   const generation = useRef(0);
   useEffect(() => { window.scrollTo(0, 0); }, [page, user]);
   const load = async (propagate=false) => {
@@ -131,18 +134,22 @@ function App() {
   const selected = sports[page],
     stats = selected ? report(records.filter(r=>matchesPlan(r,planFilter)), page, period, anchor, subtype) : null;
   async function exportFile() {
+    if(exporting)return;
     setExporting(true);
+    setError("");
     try {
-      const r = await fetch("/api/export?sport=" + page + (subtype ? "&subtype=" + encodeURIComponent(subtype) : "")+(planFilter?"&planId="+encodeURIComponent(planFilter):""));
-      if (!r.ok) throw new Error("导出失败，请重新登录或稍后重试");
+      const r = await fetch("/api/export?sport=" + page + (subtype ? "&subtype=" + encodeURIComponent(subtype) : "")+(planFilter?"&planId="+encodeURIComponent(planFilter):""),{signal:AbortSignal.timeout(30000)});
+      if (!r.ok) {const body=await r.json().catch(()=>({}));throw new Error(body.error||"导出失败，请重新登录或稍后重试");}
       const u = URL.createObjectURL(await r.blob()),
         a = document.createElement("a");
       a.href = u;
       a.download = "dailyRep-" + page + ".xlsx";
+      setDownload({url:u,name:a.download});
+      document.body.appendChild(a);
       a.click();
-      setTimeout(() => URL.revokeObjectURL(u), 1000);
+      a.remove();
     } catch (e) {
-      setError(e.message);
+      setError(e.name==='TimeoutError'?'导出超时，请检查网络后重试':e.message);
     } finally {
       setExporting(false);
     }
@@ -337,6 +344,7 @@ function App() {
                 </button>
               </div>
             </div>
+            {download&&<p className="download-status" role="status">Excel已生成。若未自动下载，<a href={download.url} download={download.name}>点此保存Excel</a>。</p>}
             {plans.some(p=>p.sport===page)&&<label className="subtype-filter">统计范围<select value={planFilter} onChange={e=>setPlanFilter(e.target.value)}><option value="">全部记录</option><option value="free">自由打卡</option>{plans.filter(p=>p.sport===page).map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select></label>}
             {subtypeOptions(page).length > 0 && <label className="subtype-filter">按类型统计
               <select value={subtype} onChange={e => setSubtype(e.target.value)}>

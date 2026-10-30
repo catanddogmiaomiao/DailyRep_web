@@ -77,3 +77,6 @@
 - Browser test with local simulated data confirmed a completed 100-day stage extends to 110 without resetting history. No production training records created.
 - Additive migration 0005 preserves old records as unlinked; existing login/photo/data authentication remains required.
 - iPhone unsigned Release and WidgetKit extension compiled. Notification delivery and live widget refresh still need physical-device acceptance.
+# Web toolbar correction (2026-10-30)
+
+The decorative header pseudo-element extends 35px over the toolbar and now has pointer-events:none. Export appends a download anchor to the document, retains a visible save link until navigation/replacement, surfaces API errors and has a 30s timeout. npm run test:ui verifies actual React DOM period changes (month/year/week), download attachment/fallback/error feedback and URL cleanup. All 23 backend tests, the Cloudflare local-runtime integration and Vite build passed. Full browser hit-testing was unavailable because the current macOS sandbox rejected browser Mach-port registration; DOM checks do not claim pixel-level verification. Published after OAuth renewal. The new assets are live, rep.book2audiogo.com is a custom domain on the same Worker, /api/health returns200, and unauthenticated /api/records returns401. Existing workers.dev remains enabled.

@@ -149,6 +149,7 @@ header {
   min-height: 235px;
 }
 header:before {
+  pointer-events: none;
   content: "";
   position: absolute;
   inset: 0 -48px -35px;
@@ -301,6 +302,8 @@ p {
   margin: 0 0 25px;
   flex-wrap: wrap;
 }
+.download-status {color: #e8dcc8; font-size: 13px; line-height: 1.7;}
+.download-status a {color: #dfc58a; text-decoration: underline; padding: 10px 0;}
 .period {
   display: flex;
   padding: 4px;

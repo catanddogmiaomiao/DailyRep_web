@@ -1,5 +1,9 @@
 # dailyRep Web + API
 
+当前简短网址：[rep.book2audiogo.com](https://rep.book2audiogo.com)。与原workers.dev地址连接同一个Worker、D1和私有R2。首次换网址需重新登录，原网址与已安装App的后端地址继续有效。
+
+网页交互回归可运行 `npm run test:ui`，验证周／月／年切换、Excel下载链接及失败提示。装饰背景不接收点击，避免覆盖顶部统计工具栏。Excel生成后保留手动保存链接，切换项目或筛选后释放下载资源。
+
 个人运动打卡网站，也是 [dailyRep App](https://github.com/catanddogmiaomiao/dailyRep) 的共用后端。深海蓝、暖米色、柔金色主题，海岸照片渐变淡入深色内容区。无模拟业务数据，首次登录后从空记录开始。
 
 ## 功能
