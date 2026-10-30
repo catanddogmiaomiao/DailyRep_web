@@ -17,6 +17,7 @@ test('Cloudflare runtime: single-owner signup, auth, R2 photos, records, real XL
     await env.DB.prepare((await readFile(new URL('../migrations/0004_record_quantity_unit.sql',import.meta.url),'utf8')).trim().replace(/;$/, '')).run();
     const plansSchema=await readFile(new URL('../migrations/0005_training_plans.sql',import.meta.url),'utf8');
     for(const sql of plansSchema.split(';').map(s=>s.trim()).filter(Boolean))await env.DB.prepare(sql).run();
+    await env.DB.prepare((await readFile(new URL('../migrations/0006_widget_collections.sql',import.meta.url),'utf8')).trim().replace(/;$/, '')).run();
     let token = '';
     const call = async (route, init={}) => {
       // Serialize with the same browser multipart encoder before crossing the
@@ -69,6 +70,22 @@ test('Cloudflare runtime: single-owner signup, auth, R2 photos, records, real XL
     const widget=await call('/widget-state',{headers:{'X-DailyRep-Widget-Key':linkData.code}});assert.equal(widget.status,200);const widgetData=await widget.json();assert.equal(widgetData.progress.goalDays,120);assert.equal(widgetData.progress.completedDays,1);assert.equal(widgetData.email,undefined);assert.equal(widgetData.records,undefined);
     assert.equal((await call('/plans')).status,401);assert.equal((await call('/widget-state')).status,401);
     token=authToken;
+    const allLink=await (await post('/widget-links',{scope:'all'})).json();assert.match(allLink.code,/^[a-f0-9]{12}$/);
+    const swimPlan=await (await post('/plans',{...planBody,sport:'swimming',title:'游泳计划'})).json();
+    token='';
+    const allWidget=await (await call('/widget-state',{headers:{'X-DailyRep-Widget-Key':allLink.code}})).json();
+    assert.equal(allWidget.scope,'all');assert.equal(allWidget.plans.length,2);
+    assert.ok(allWidget.plans.some(p=>p.planId===swimPlan.id));assert.equal(allWidget.records,undefined);assert.equal(allWidget.email,undefined);
+    const scoped=await (await call('/widget-state',{headers:{'X-DailyRep-Widget-Key':linkData.code}})).json();assert.equal(scoped.plans.length,1,'old single-plan codes must not expand their access');
+    token=authToken;
+    await post('/plans/'+swimPlan.id,{action:'archive',revision:swimPlan.revision});token='';
+    assert.equal((await (await call('/widget-state',{headers:{'X-DailyRep-Widget-Key':allLink.code}})).json()).plans.length,1);
+    assert.equal((await post('/widget-links',{scope:'all'})).status,401);
+    token=authToken;
+    const replacement=await (await post('/widget-links',{scope:'all'})).json();
+    token='';assert.equal((await call('/widget-state',{headers:{'X-DailyRep-Widget-Key':allLink.code}})).status,401);
+    token=authToken;await call('/widget-links',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({scope:'all'})});
+    token='';assert.equal((await call('/widget-state',{headers:{'X-DailyRep-Widget-Key':replacement.code}})).status,401);token=authToken;
     assert.equal((await call('/widget-links',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({planId})})).status,200);
     assert.equal((await call('/widget-state',{headers:{'X-DailyRep-Widget-Key':linkData.code}})).status,401);
     assert.equal((await call('/records/'+planned.id,{method:'DELETE'})).status,204);

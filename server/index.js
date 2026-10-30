@@ -28,6 +28,7 @@ if (!db.prepare("PRAGMA table_info(records)").all().some(column => column.name =
   db.exec("ALTER TABLE records ADD COLUMN quantityUnit TEXT");
 }
 db.exec("CREATE TABLE IF NOT EXISTS training_plans(id TEXT PRIMARY KEY,sport TEXT NOT NULL,status TEXT NOT NULL,revision INTEGER NOT NULL,spec TEXT NOT NULL); CREATE UNIQUE INDEX IF NOT EXISTS one_open_plan_per_sport ON training_plans(sport) WHERE status IN ('active','paused'); CREATE TABLE IF NOT EXISTS widget_links(tokenHash TEXT PRIMARY KEY,planId TEXT NOT NULL UNIQUE REFERENCES training_plans(id));");
+db.exec("CREATE TABLE IF NOT EXISTS widget_collections(id INTEGER PRIMARY KEY CHECK (id=1),tokenHash TEXT NOT NULL UNIQUE)");
 if(!db.prepare("PRAGMA table_info(records)").all().some(column=>column.name==="planId"))db.exec("ALTER TABLE records ADD COLUMN planId TEXT REFERENCES training_plans(id)");
 if (!db.prepare("SELECT id FROM account").get()) {
   const email = process.env.OWNER_EMAIL?.trim().toLowerCase(),

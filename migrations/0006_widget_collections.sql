@@ -1,0 +1,1 @@
+CREATE TABLE widget_collections (id INTEGER PRIMARY KEY CHECK (id=1), tokenHash TEXT NOT NULL UNIQUE);

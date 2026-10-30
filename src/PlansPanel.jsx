@@ -11,16 +11,16 @@ export function PlanSummary({plan,onClick}) {
   </button>;
 }
 export function PlansPanel({plans,api,onChanged,onPlanSaved,onClose,onCheckin}) {
- const [editing,setEditing]=useState(undefined),[busy,setBusy]=useState(false),[error,setError]=useState(''),[code,setCode]=useState('');const dialog=useRef(null);
+ const [editing,setEditing]=useState(undefined),[busy,setBusy]=useState(false),[error,setError]=useState('');const dialog=useRef(null);
  useEffect(()=>{dialog.current?.focus();const handle=e=>{if(e.key==='Escape'&&!busy)onClose();if(e.key==='Tab'){const nodes=[...dialog.current.querySelectorAll('button,input,select')].filter(n=>!n.disabled);if(e.shiftKey&&document.activeElement===nodes[0]){e.preventDefault();nodes.at(-1)?.focus();}else if(!e.shiftKey&&document.activeElement===nodes.at(-1)){e.preventDefault();nodes[0]?.focus();}}};document.addEventListener('keydown',handle);return()=>document.removeEventListener('keydown',handle);},[busy,onClose]);
  async function action(plan,body){if(busy)return;setBusy(true);setError('');try{const saved=await api('/plans/'+plan.id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,revision:plan.revision})});onPlanSaved(saved);await onChanged();}catch(e){setError(e.message);}finally{setBusy(false);}}
- async function widget(plan){if(!confirm('生成新连接码后，此计划旧的小组件连接码会失效。继续？'))return;setBusy(true);try{const data=await api('/widget-links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({planId:plan.id})});setCode(data.code);try{await navigator.clipboard.writeText(data.code);}catch{}}catch(e){setError(e.message);}finally{setBusy(false);}}
  return <div className="overlay"><section className="modal plans-modal" role="dialog" aria-modal="true" aria-labelledby="plans-title" tabIndex={-1} ref={dialog}>
   <div className="modal-heading"><h2 id="plans-title">{editing===undefined?'长期训练计划':editing?'调整安排':'设置长期计划'}</h2><button aria-label="关闭计划窗口" disabled={busy} onClick={onClose}><X/></button></div>
   {error&&<p className="form-error" role="alert">{error}</p>}
   {editing!==undefined?<><button className="outline" disabled={busy} onClick={()=>setEditing(undefined)}>返回计划列表</button><PlanForm key={editing?.id||'new'} plan={editing} busy={busy} onSave={async input=>{setBusy(true);setError('');try{const saved=await api(editing?'/plans/'+editing.id:'/plans',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(editing?{...input,action:'edit',revision:editing.revision}:input)});onPlanSaved(saved);setEditing(undefined);await onChanged();}catch(e){setError(e.message);}finally{setBusy(false);}}}/></>:<>
    <p className="plan-note">可以只打卡，也可以设置长期计划。网页修改安排后，请打开iPhone App同步系统提醒。</p>
    <button className="gold" disabled={busy} onClick={()=>setEditing(null)}><Plus size={18}/>设置长期计划</button>
+   <p className="plan-note">iPhone小组件会自动读取App已同步的计划，无需填写连接码。网页修改后，打开手机App即可同步。</p>
    {plans.filter(p=>p.status!=='archived').map(plan=><div className="plan-item" key={plan.id}>
     <PlanSummary plan={plan} onClick={()=>{if(plan.status==='active'&&!plan.progress.ended)onCheckin(plan.sport,plan.id);}}/>
     <p className="plan-note">{plan.startDate} — {plan.endDate} · {repeatLabel(plan.repeat)} · {plan.reminderEnabled?plan.reminderTime+'提醒':'不提醒'}</p>
@@ -30,12 +30,11 @@ export function PlansPanel({plans,api,onChanged,onPlanSaved,onClose,onCheckin}) 
       {plan.status==='paused'?<button className="outline" disabled={busy} onClick={()=>action(plan,{action:'resume'})}>恢复计划</button>:plan.status==='active'&&!plan.progress.ended?<button className="outline" disabled={busy} onClick={()=>{if(confirm('暂停时不提醒，恢复时结束日期按暂停天数顺延。已有记录保留。'))action(plan,{action:'pause'});}}>暂停</button>:null}
       {plan.status==='active'&&<button className="outline" disabled={busy} onClick={()=>setEditing(plan)}>调整安排</button>}
       {plan.status!=='paused'&&<button className="outline" disabled={busy} onClick={()=>{const days=prompt('新的总目标天数（例如110或150）；保留原计划及打卡',String(plan.goalDays+30));if(days!==null)action(plan,{action:'extend',goalDays:Number(days)});}}>自定下一阶段</button>}
-      <button className="outline" disabled={busy} onClick={()=>widget(plan)}>连接桌面小组件</button>
       {plan.status==='active'&&<button className="outline" disabled={busy} onClick={()=>{if(confirm('结束后停止安排提醒，原打卡记录保留。'))action(plan,{action:'finish'});}}>结束此计划</button>}
       {plan.status==='finished'&&<button className="outline" disabled={busy} onClick={()=>action(plan,{action:'archive'})}>隐藏已结束计划</button>}
     </div>
    </div>)}
-   {code&&<div className="plan-celebration"><label className="field">小组件连接码<input value={code} readOnly onFocus={e=>e.target.select()}/></label><p>长按iPhone主屏幕添加“健身坚持”，再编辑小组件并粘贴连接码。仅允许读取此计划进度。</p></div>}
+
   </>}
  </section></div>;
 }

@@ -68,3 +68,8 @@ Records accept optional multipart planId; sport and plan date range are validate
 POST /api/widget-links {planId} returns a12-character readonly code and replaces that plan's previous link. DELETE /api/widget-links {planId} revokes it. These endpoints require login. GET /api/widget-state uses X-DailyRep-Widget-Key instead of a login session; returns only planId/title/sport/status/progress/updatedAt, no records, account data or photos. Codes are stored as SHA256 hashes and the public endpoint is separately rate limited.
 
 Migration0005 adds training_plans, nullable records.planId and widget_links without rewriting historical records. Express initializes equivalent schema. Keep both repositories' src/plans.js identical. Notifications are scheduled locally on iPhone; webpage changes require reopening the phone app to sync.
+
+
+## All-plan widget scope
+
+Authenticated POST /api/widget-links with {"scope":"all"} generates/replaces the account's readonly all-plan code; DELETE with the same body revokes it. GET /api/widget-state recognizes this code and returns {scope:"all",plans:[summaries],updatedAt}; excludes archived plans and sorts today's due incomplete active plans first, then other active/paused/finished plans. Summaries contain only planId/title/sport/status/progress. New plans are included automatically. Existing plan-specific codes retain their original scope and original top-level response fields, with plans:[summary] added for the new widget. Migration0006 creates a separate hashed collection-link table without altering existing codes or records.
