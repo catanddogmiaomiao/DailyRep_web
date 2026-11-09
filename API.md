@@ -73,3 +73,16 @@ Migration0005 adds training_plans, nullable records.planId and widget_links with
 ## All-plan widget scope
 
 Authenticated POST /api/widget-links with {"scope":"all"} generates/replaces the account's readonly all-plan code; DELETE with the same body revokes it. GET /api/widget-state recognizes this code and returns {scope:"all",plans:[summaries],updatedAt}; excludes archived plans and sorts today's due incomplete active plans first, then other active/paused/finished plans. Summaries contain only planId/title/sport/status/progress. New plans are included automatically. Existing plan-specific codes retain their original scope and original top-level response fields, with plans:[summary] added for the new widget. Migration0006 creates a separate hashed collection-link table without altering existing codes or records.
+
+### Account management
+
+- `GET /api/me` returns the email, nickname, avatar key, verification status, email availability and whether a recovery code exists.
+- `POST /api/account/profile` accepts `{nickname,avatar}`; avatars are `wave`, `sun`, `mountain`, or `bolt`.
+- `GET /api/account/sessions` returns device labels and public IDs. `POST /api/account/sessions/revoke` accepts `{id}` for another device or `{id:"others"}`. Session secrets are never listed.
+- `POST /api/account/password` accepts `{currentPassword,newPassword}` and signs out other devices. New passwords require at least 8 characters.
+- `POST /api/account/recovery-code` accepts `{currentPassword}`; the single-use code is shown once, and regeneration replaces the previous code.
+- `POST /api/account/email/send` accepts `{email,currentPassword}`. `POST /api/account/email/confirm` additionally requires `code` and signs out other devices on change.
+- `POST /api/password-reset` accepts `{email,code,newPassword,method}`, where `method` is `recovery` or `email`. For a verified email, `POST /api/password-reset/email` accepts `{email}`. Successful resets sign out all devices and invalidate the recovery code.
+- `POST /api/account/delete` requires `{currentPassword,confirmEmail}`. It permanently removes the singleton account, check-ins, plans, sessions and widget links. Photo deletion is queued durably and retried automatically. A deletion marker disables reuse of the original setup invitation; starting over requires provisioning a new instance.
+
+Apply migration 0007 before running the updated Worker. To enable email verification and verified-email recovery, set `RESEND_API_KEY` as a Cloudflare secret and `ACCOUNT_EMAIL_FROM` to an address on a Resend-verified sending domain. The local server reads both from the environment. Without these settings, recovery codes work and email actions are unavailable. Email verification is not required to sign in.

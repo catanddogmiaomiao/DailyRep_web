@@ -33,5 +33,6 @@
   },
   "workers_dev": true,
   "account_id": "c4a4902612954d3640797c0f27c27f03",
+  "triggers": {"crons": ["*/15 * * * *"]},
   "routes": []
 }

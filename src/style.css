@@ -1016,3 +1016,22 @@ footer {
 .plan-weekdays {display:flex;flex-wrap:wrap;gap:10px;margin:16px 0;border:1px solid #c6a75e44;border-radius:12px;padding:12px;}
 .plan-weekdays label,.plan-checkbox {display:flex;align-items:center;gap:8px;min-height:44px;}
 .plan-home {display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin:24px 0;}
+
+.account-modal { max-width: min(520px, calc(100vw - 28px)); max-height: 88dvh; margin: auto; color: var(--cream, #e8dcc8); }
+.account-modal::backdrop { background: #080f1dc9; }
+.account-modal .modal-heading button { min-width: 44px; min-height: 44px; }
+.account-summary { display: flex; align-items: center; gap: 16px; margin: 8px 0 20px; overflow-wrap: anywhere; }
+.account-summary > span { display:grid; place-items:center; width: 56px; height: 56px; flex-shrink: 0; border-radius: 16px; font-size: 24px; background: #ffffff12; }
+.account-summary small,.account-session small { display:block; color: #aab4c6; margin-top: 3px; }
+.account-menu,.account-sessions,.account-modal form { display:grid; gap: 12px; }
+.account-menu button { justify-content: flex-start; min-height: 44px; }
+.account-avatars,.account-session { display:flex; align-items:center; gap: 10px; flex-wrap:wrap; }
+.account-avatars button[aria-pressed=true] { border-color: #c6a75e; background: #c6a75e26; }
+.account-session { justify-content:space-between; padding: 8px 0; }
+.account-code { display:block; padding:14px 0; overflow-wrap:anywhere; font-family:monospace; user-select:all; }
+.account-modal .account-danger { color: #ffa6a4; border-color: #ffa6a46b; }
+
+.account-modal form label { display:grid; gap:6px; }
+.account-modal form input { border:1px solid #e8dcc849; border-radius:10px; color:#e8dcc8; background:#101b2d; padding:10px 12px; min-height:44px; width:100%; font:inherit; }
+.account-modal .auth-switch { min-height:44px; text-align:left; }
+.account button[aria-label="账号管理"] { min-width:44px; min-height:44px; }

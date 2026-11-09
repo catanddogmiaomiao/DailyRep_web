@@ -10,7 +10,7 @@ import {
   Download,
   ChevronLeft,
   ChevronRight,
-  LogOut,
+  UserRound,
   Lock,
   Camera,
   Image as ImageIcon,
@@ -20,6 +20,7 @@ import {
   Clock,
   Check,
 } from "lucide-react";
+import {Account,ResetForm} from "./Account.jsx";
 import {PlansPanel, PlanSummary} from "./PlansPanel.jsx";
 import {dateInZone,isDue,matchesPlan,planProgress} from "./plans.js";
 import { report, movePeriod } from "./stats";
@@ -53,6 +54,7 @@ function App() {
     [records, setRecords] = useState([]),
     [plans,setPlans] = useState([]),
     [plansVisible,setPlansVisible] = useState(false),
+    [accountVisible,setAccountVisible] = useState(false),
     [initialPlanId,setInitialPlanId] = useState(""),
     [planFilter,setPlanFilter] = useState(""),
     [page, setPage] = useState("home"),
@@ -76,11 +78,7 @@ function App() {
       const [rows,planRows] = await Promise.all([api("/records"),api("/plans")]);
       if (version === generation.current) {setRecords(rows);setPlans(planRows);}
     } catch (e) {
-      if (e.status === 401) {
-        generation.current++;
-        setUser(null);
-        setRecords([]);
-      } else setError(e.message);
+      if (version === generation.current) { if(e.status===401)clear(); else setError(e.message); }
       if(propagate)throw e;
     } finally {
       setLoading(false);
@@ -97,16 +95,10 @@ function App() {
         if (e.status !== 401) setError("暂时无法连接服务，请确认后端已经启动");
       });
   }, []);
-  const logout = async () => {
-    try {
-      await api("/logout", { method: "POST" });
-      generation.current++;
-      setUser(null);
-      setRecords([]);setPlans([]);setPlansVisible(false);
-      setPhoto(null);
-    } catch (e) {
-      setError(e.message);
-    }
+  const clear = () => {
+    generation.current++;
+    setUser(null);setRecords([]);setPlans([]);setPlansVisible(false);setAccountVisible(false);
+    setModal(false);setPhoto(null);setError("");setPage("home");setPlanFilter("");
   };
   const go = (key) => {
     setPage(key);setPlanFilter("");
@@ -191,13 +183,14 @@ function App() {
         <div className="account">
           <Lock size={16} />
           <span>
-            私人空间<small>{user.email}</small>
+            {user.nickname || "私人空间"}<small>{user.email}</small>
           </span>
-          <button title="退出登录" onClick={logout}>
-            <LogOut size={18} />
+          <button title="账号管理" aria-label="账号管理" onClick={()=>setAccountVisible(true)}>
+            <UserRound size={20} />
           </button>
         </div>
       </aside>
+      {accountVisible&&<Account api={api} onClose={()=>setAccountVisible(false)} onUpdated={setUser} onSignedOut={clear}/>}
       <main>
         <header>
           <div className="eyebrow">YOUR EVERYDAY, A LITTLE STRONGER</div>
@@ -590,9 +583,10 @@ function Login({ onLogin, error }) {
   const [err, setErr] = useState(""),
     [busy, setBusy] = useState(false),
     [register, setRegister] = useState(false),
-    [registrationAvailable, setRegistrationAvailable] = useState(false);
+    [registrationAvailable, setRegistrationAvailable] = useState(false),
+    [emailAvailable,setEmailAvailable]=useState(false),[reset,setReset]=useState(false),[resetDone,setResetDone]=useState(false);
   useEffect(() => {
-    api('/setup').then(data => setRegistrationAvailable(data.registrationAvailable)).catch(() => {});
+    api('/setup').then(data => {setRegistrationAvailable(data.registrationAvailable);setEmailAvailable(data.emailAvailable);}).catch(() => {});
   }, []);
   async function submit(e) {
     e.preventDefault();
@@ -601,12 +595,12 @@ function Login({ onLogin, error }) {
     const f = new FormData(e.currentTarget);
     try {
       if (register && f.get('password') !== f.get('confirmPassword')) throw new Error('两次输入的密码不一致');
-      const { email } = await api(register ? "/register" : "/login", {
+      const {token,...profile} = await api(register ? "/register" : "/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(Object.fromEntries(f)),
       });
-      onLogin({ email });
+      onLogin(profile);
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -635,7 +629,7 @@ function Login({ onLogin, error }) {
         </div>
         <small>深海蓝 · 暖米色 · 柔金色</small>
       </div>
-      <form className="login-form" onSubmit={submit}>
+      {reset?<ResetForm api={api} emailAvailable={emailAvailable} onBack={()=>setReset(false)} onDone={()=>{setReset(false);setResetDone(true);}}/>:<form className="login-form" onSubmit={submit}>
         <Lock className="login-lock" size={30} />
         <h2>{register ? '创建个人账号' : '欢迎回来'}</h2>
         <p>{register ? '注册后开始记录你的第一场运动' : '登录后查看你的个人运动记录'}</p>
@@ -665,6 +659,7 @@ function Login({ onLogin, error }) {
           <label>确认密码<input name="confirmPassword" type="password" autoComplete="new-password" required placeholder="再次输入密码" /></label>
           <label>首次注册邀请码<input name="setupCode" type="password" autoComplete="off" required placeholder="输入服务所有者的邀请码" /></label>
         </>}
+        {resetDone&&<p role="status">密码已重设，请用新密码登录。</p>}
         {(err || error) && (
           <p className="error" role="alert">
             {err || error}
@@ -677,11 +672,12 @@ function Login({ onLogin, error }) {
         {(registrationAvailable || register) && <button type="button" className="auth-switch" disabled={busy} onClick={() => { setRegister(!register); setErr(''); }}>
           {register ? '已有账号？返回登录' : '首次使用？创建个人账号'}
         </button>}
+        {!register&&<button type="button" className="auth-switch" disabled={busy} onClick={()=>{setErr("");setResetDone(false);setReset(true);}}>忘记密码？</button>}
         <p className="quiet">
           <Lock size={14} />
           个人账号 · 数据私密保存
         </p>
-      </form>
+      </form>}
     </div>
   );
 }

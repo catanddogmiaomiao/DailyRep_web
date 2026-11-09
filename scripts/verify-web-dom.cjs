@@ -11,13 +11,22 @@ const {buildSync}=require('esbuild');
  w.HTMLAnchorElement.prototype.click=function(){downloads.push({href:this.href,name:this.download,attached:this.isConnected});};
  w.fetch=async url=>{
   if(url==='/api/me')return {ok:true,json:async()=>({email:'test@example.com'})};
+  if(url==='/api/account/sessions')return {ok:true,json:async()=>[{id:'test-session',device:'网页 · Mac',current:true}]};
   if(url==='/api/records'||url==='/api/plans')return {ok:true,json:async()=>[]};
   if(url.startsWith('/api/export?'))return fail?{ok:false,json:async()=>({error:'请重新登录'})}:{ok:true,blob:async()=>new Blob(['test export'])};
   throw Error('Unexpected API '+url);
  };
+ // jsdom does not implement the modal top layer in all supported versions.
+ if(!w.HTMLDialogElement.prototype.showModal)w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
  w.eval(bundle);
  const wait=async check=>{for(let n=0;n<100;n++){if(check())return;await new Promise(r=>setTimeout(r,10));}throw Error('DOM assertion timed out');};
  await wait(()=>w.document.querySelector('aside'));
+ w.document.querySelector('[aria-label="账号管理"]').click();
+ await wait(()=>w.document.querySelector('.account-summary')?.textContent.includes('test@example.com'));
+ [...w.document.querySelectorAll('dialog button')].find(b=>b.textContent==='已登录设备').click();
+ await wait(()=>w.document.querySelector('.account-session')?.textContent.includes('网页 · Mac（当前）'));
+ w.document.querySelector('[aria-label="关闭账号管理"]').click();
+ await wait(()=>!w.document.querySelector('dialog'));
  [...w.document.querySelectorAll('aside button')].find(b=>b.textContent==='跑步').click();
  await wait(()=>w.document.querySelector('.period'));
  for(const [label,count] of [['月',new Date(new Date().getFullYear(),new Date().getMonth()+1,0).getDate()],['年',12],['周',7]]){

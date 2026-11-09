@@ -1,3 +1,6 @@
+import {sqliteD1} from './sqlite-d1.js';
+import accountWorker from '../worker/index.js';
+import {drainDeletedPhotos} from '../worker/account.js';
 import {matchesPlan} from '../src/plans.js';
 import express from "express";
 import {planStore,handlePlanRoute,widgetState,validateRecordPlan} from "./plans-api.js";
@@ -6,7 +9,7 @@ import { rateLimit } from "express-rate-limit";
 import multer from "multer";
 import ExcelJS from "exceljs";
 import { DatabaseSync } from "node:sqlite";
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { randomBytes, scryptSync, createHash } from "node:crypto";
 import { mkdirSync, readFileSync, unlinkSync, existsSync } from "node:fs";
 import path from "node:path";
 import { validateRecord, sports } from "./domain.js";
@@ -30,13 +33,20 @@ if (!db.prepare("PRAGMA table_info(records)").all().some(column => column.name =
 db.exec("CREATE TABLE IF NOT EXISTS training_plans(id TEXT PRIMARY KEY,sport TEXT NOT NULL,status TEXT NOT NULL,revision INTEGER NOT NULL,spec TEXT NOT NULL); CREATE UNIQUE INDEX IF NOT EXISTS one_open_plan_per_sport ON training_plans(sport) WHERE status IN ('active','paused'); CREATE TABLE IF NOT EXISTS widget_links(tokenHash TEXT PRIMARY KEY,planId TEXT NOT NULL UNIQUE REFERENCES training_plans(id));");
 db.exec("CREATE TABLE IF NOT EXISTS widget_collections(id INTEGER PRIMARY KEY CHECK (id=1),tokenHash TEXT NOT NULL UNIQUE)");
 if(!db.prepare("PRAGMA table_info(records)").all().some(column=>column.name==="planId"))db.exec("ALTER TABLE records ADD COLUMN planId TEXT REFERENCES training_plans(id)");
-if (!db.prepare("SELECT id FROM account").get()) {
+if(!db.prepare("PRAGMA table_info(account)").all().some(column=>column.name==="nickname")){
+  db.exec("BEGIN");
+  try {
+    db.exec(readFileSync(new URL("../migrations/0007_account_management.sql",import.meta.url),"utf8"));
+    db.exec("COMMIT");
+  } catch(error){db.exec("ROLLBACK");throw error;}
+}
+if (!db.prepare("SELECT id FROM account UNION ALL SELECT id FROM account_deleted").get()) {
   const email = process.env.OWNER_EMAIL?.trim().toLowerCase(),
     password = process.env.OWNER_PASSWORD;
   if (!email || !password || password.length < 8)
     throw new Error("首次启动须设置 OWNER_EMAIL 和至少8位的 OWNER_PASSWORD");
   const salt = randomBytes(16).toString("hex");
-  db.prepare("INSERT INTO account VALUES (1,?,?,?)").run(
+  db.prepare("INSERT INTO account(id,email,salt,hash) VALUES (1,?,?,?)").run(
     email,
     salt,
     scryptSync(password, salt, 64).toString("hex"),
@@ -74,47 +84,41 @@ const cookieToken = (req) =>
     ?.slice(9);
 const tokenOf = (req) =>
   req.headers.authorization?.replace(/^Bearer /, "") || cookieToken(req);
-const secure =
-  process.env.NODE_ENV === "production" && !process.env.ALLOW_INSECURE_HTTP;
-app.post(
-  "/api/login",
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    limit: 10,
-    standardHeaders: "draft-8",
-    legacyHeaders: false,
-  }),
-  (req, res) => {
-    const a = db.prepare("SELECT * FROM account").get(),
-      { email, password } = req.body || {};
-    if (
-      typeof password !== "string" ||
-      password.length > 1024 ||
-      typeof email !== "string"
-    )
-      return res.status(400).json({ error: "请输入邮箱和密码" });
-    const candidate = scryptSync(password, a.salt, 64);
-    if (
-      !timingSafeEqual(candidate, Buffer.from(a.hash, "hex")) ||
-      email.trim().toLowerCase() !== a.email
-    )
-      return res.status(401).json({ error: "邮箱或密码错误" });
-    db.prepare("DELETE FROM sessions WHERE expires < ?").run(Date.now());
-    const token = randomBytes(32).toString("hex");
-    db.prepare("INSERT INTO sessions VALUES (?,?)").run(
-      token,
-      Date.now() + 7 * 86400000,
-    );
-    res.cookie("dailyrep", token, {
-      httpOnly: true,
-      secure,
-      sameSite: "strict",
-      maxAge: 7 * 86400000,
-      path: "/",
-    });
-    res.json({ token, email: a.email });
-  },
-);
+// Keep the existing local scrypt password hashes. Both hosts use the same
+// account routes, with a SQLite adapter for the local server.
+const accountEnv={
+  DB:sqliteD1(db),
+  PHOTOS:{delete:async keys=>{for(const key of keys){try{unlinkSync(path.join(dir,"photos",key));}catch(e){if(e.code!=="ENOENT")throw e;}}}},
+  SETUP_CODE:process.env.SETUP_CODE,ALLOWED_ORIGIN:process.env.ALLOWED_ORIGIN,
+  RESEND_API_KEY:process.env.RESEND_API_KEY,ACCOUNT_EMAIL_FROM:process.env.ACCOUNT_EMAIL_FROM,
+  hashPassword:async(password,salt)=>scryptSync(password,salt,64).toString("hex"),
+};
+// Older local releases stored raw bearer tokens. Convert them in place once.
+if(!db.prepare("PRAGMA user_version").get().user_version){
+  db.exec("BEGIN");
+  try {
+    const update=db.prepare("UPDATE sessions SET token=? WHERE token=?");
+    for(const {token} of db.prepare("SELECT token FROM sessions WHERE device='旧版设备'").all())
+      update.run(createHash("sha256").update(token).digest("hex"),token);
+    db.exec("PRAGMA user_version=1; COMMIT");
+  } catch(error){db.exec("ROLLBACK");throw error;}
+}
+const cleanupPhotos=()=>void drainDeletedPhotos(accountEnv).catch(()=>console.error("Pending account photo cleanup will be retried"));
+cleanupPhotos();
+setInterval(cleanupPhotos,15*60*1000).unref();
+app.use("/api",async(req,res,next)=>{
+  if(!/^\/(?:login|logout|register|setup|me|password-reset(?:\/email)?|account\/[^?]+)$/.test(req.path))return next();
+  const protocol=process.env.NODE_ENV==="production"&&!process.env.ALLOW_INSECURE_HTTP?"https":req.protocol;
+  const headers=new Headers(req.headers);
+  headers.set("CF-Connecting-IP",req.ip||"local");
+  headers.delete("content-length");
+  const request=new Request(protocol+"://"+req.get("host")+req.originalUrl,{method:req.method,headers,...(["GET","HEAD"].includes(req.method)?{}:{body:JSON.stringify(req.body||{})})});
+  const response=await accountWorker.fetch(request,accountEnv);
+  for(const [key,value] of response.headers)res.set(key,value);
+  res.status(response.status);
+  if(!response.body)return res.end();
+  res.send(Buffer.from(await response.arrayBuffer()));
+});
 app.get("/api/widget-state", rateLimit({windowMs:60000,limit:120,standardHeaders:true,legacyHeaders:false}), async (req,res) => {
   try {res.json(await widgetState(planStore(db),req.get("X-DailyRep-Widget-Key")));}
   catch(e){res.status(e.status||400).json({error:e.message});}
@@ -123,7 +127,7 @@ app.use("/api", (req, res, next) => {
   res.set("Cache-Control", "no-store");
   const session = db
     .prepare("SELECT * FROM sessions WHERE token=? AND expires>?")
-    .get(tokenOf(req) || "", Date.now());
+    .get(createHash("sha256").update(tokenOf(req) || "").digest("hex"), Date.now());
   if (!session) return res.status(401).json({ error: "请先登录" });
   next();
 });
@@ -132,13 +136,6 @@ app.use("/api", async (req,res,next) => {
   if(!route.startsWith("/plans")&&route!=="/widget-links")return next();
   try {const result=await handlePlanRoute(planStore(db),route,req.method,req.body);if(result)return res.status(result.status).json(result.body);next();}
   catch(e){res.status(e.status||400).json({error:e.message});}
-});
-app.get("/api/me", (req, res) =>
-  res.json({ email: db.prepare("SELECT email FROM account").get().email }),
-);
-app.post("/api/logout", (req, res) => {
-  db.prepare("DELETE FROM sessions WHERE token=?").run(tokenOf(req));
-  res.clearCookie("dailyrep", { path: "/" }).sendStatus(204);
 });
 app.get("/api/records", (req, res) =>
   res.json(db.prepare("SELECT * FROM records ORDER BY occurredAt DESC").all().map(hydrateRecord)),

@@ -1,3 +1,4 @@
+import {accountRoute,deviceLabel,digest,drainDeletedPhotos,equal,fail,json,loggedOut,random} from './account.js';
 import {matchesPlan} from '../src/plans.js';
 import ExcelJS from 'exceljs';
 import {planStore,handlePlanRoute,widgetState,validateRecordPlan} from '../server/plans-api.js';
@@ -8,19 +9,10 @@ const encoder = new TextEncoder();
 const TTL = 7 * 86400000;
 const MAX_PHOTO = 8 * 1024 * 1024;
 const hex = bytes => Array.from(new Uint8Array(bytes), n => n.toString(16).padStart(2, '0')).join('');
-const random = size => hex(crypto.getRandomValues(new Uint8Array(size)));
-const digest = async value => hex(await crypto.subtle.digest('SHA-256', encoder.encode(value)));
 export async function passwordHash(password, salt) {
   const key = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
   return hex(await crypto.subtle.deriveBits({name: 'PBKDF2', salt: encoder.encode(salt), iterations: 100000, hash: 'SHA-256'}, key, 256));
 }
-function equal(a, b) {
-  let diff = a.length ^ b.length;
-  for (let i = 0; i < Math.max(a.length, b.length); i++) diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
-  return diff === 0;
-}
-const json = (body, status = 200, headers = {}) => Response.json(body, {status, headers});
-const fail = (message, status) => { throw Object.assign(new Error(message), {status}); };
 async function credentials(request) {
   if (Number(request.headers.get('content-length') || 0) > 16384) fail('请求内容过大', 413);
   const text = await request.text();
@@ -30,10 +22,10 @@ async function credentials(request) {
   if (!data || typeof data.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email.trim()) || data.email.length > 254 || typeof data.password !== 'string' || !data.password || data.password.length > 1024) fail('请输入有效的邮箱和密码', 400);
   return {...data, email: data.email.trim().toLowerCase()};
 }
-async function limitAuth(request, env) {
+async function limitAuth(request, env, scope='login') {
   const now = Date.now(), window = 15 * 60000;
   const ip = request.headers.get('CF-Connecting-IP') || 'local';
-  const key = await digest(ip + ':' + Math.floor(now / window));
+  const key = await digest(scope + ':' + ip + ':' + Math.floor(now / window));
   await env.DB.prepare('DELETE FROM auth_attempts WHERE expires < ?').bind(now).run();
   const row = await env.DB.prepare('INSERT INTO auth_attempts(key,attempts,expires) VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET attempts=attempts+1 RETURNING attempts').bind(key, now + window).first();
   if (row.attempts > 10) fail('尝试次数过多，请15分钟后重试', 429);
@@ -43,14 +35,15 @@ async function limitWidget(request,env) {
   const row=await env.DB.prepare('INSERT INTO auth_attempts(key,attempts,expires) VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET attempts=attempts+1 RETURNING attempts').bind(key,now+60000).first();
   if(row.attempts>120)fail('请求过于频繁',429);
 }
-async function session(env, email, request, status = 200) {
+async function session(env, account, request, status = 200) {
   const token = random(32), now = Date.now();
-  await env.DB.batch([
+  const results=await env.DB.batch([
     env.DB.prepare('DELETE FROM sessions WHERE expires < ?').bind(now),
-    env.DB.prepare('INSERT INTO sessions VALUES (?,?)').bind(await digest(token), now + TTL),
+    env.DB.prepare('INSERT INTO sessions(token,expires,publicId,device,createdAt) SELECT ?,?,?,?,? FROM account WHERE id=1 AND hash=? AND email=?').bind(await digest(token),now+TTL,random(16),deviceLabel(request),now,account.hash,account.email),
   ]);
+  if(!results[1].meta.changes)fail('账号已变更，请重新登录',409);
   const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
-  return json({token, email}, status, {'Set-Cookie': `dailyrep=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800${secure}`});
+  return json({token, email:account.email,nickname:account.nickname,avatar:account.avatar}, status, {'Set-Cookie': `dailyrep=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800${secure}`});
 }
 function tokenOf(request) {
   return request.headers.get('Authorization')?.replace(/^Bearer /, '') || request.headers.get('Cookie')?.split(';').map(x => x.trim()).find(x => x.startsWith('dailyrep='))?.slice(9) || '';
@@ -61,8 +54,10 @@ function imageType(b) {
   if (String.fromCharCode(...b.slice(0,4)) === 'RIFF' && String.fromCharCode(...b.slice(8,12)) === 'WEBP') return 'image/webp';
   return null;
 }
-async function api(request, env) {
+async function api(request, env, ctx) {
   const url = new URL(request.url), route = url.pathname.slice(4), method = request.method;
+  const hashPassword=env.hashPassword||passwordHash;
+  if(route==='/password-reset'||route==='/password-reset/email')return accountRoute(request,env,{route,limitAuth,passwordHash:hashPassword,ctx});
   if (route === '/health' && method === 'GET') {
     await env.DB.prepare('SELECT 1').first();
     return json({ok: true});
@@ -72,8 +67,8 @@ async function api(request, env) {
     return json(await widgetState(planStore(env.DB,true),request.headers.get('X-DailyRep-Widget-Key')));
   }
   if (route === '/setup' && method === 'GET') {
-    const account = await env.DB.prepare('SELECT id FROM account').first();
-    return json({registrationAvailable: !account && !!env.SETUP_CODE});
+    const account = await env.DB.prepare('SELECT id FROM account UNION ALL SELECT id FROM account_deleted LIMIT 1').first();
+    return json({registrationAvailable: !account && !!env.SETUP_CODE,emailAvailable:!!(env.RESEND_API_KEY&&env.ACCOUNT_EMAIL_FROM)});
   }
   if (['/register', '/login'].includes(route) && method === 'POST') {
     await limitAuth(request, env);
@@ -84,15 +79,15 @@ async function api(request, env) {
       if (!env.SETUP_CODE) fail('尚未开启首次注册，请联系服务所有者', 403);
       if (typeof data.setupCode !== 'string' || !equal(await digest(data.setupCode), await digest(env.SETUP_CODE))) fail('首次注册邀请码不正确', 403);
       if (data.password.length < 8) fail('密码至少需要8位', 400);
-      const salt = random(16), hash = await passwordHash(data.password, salt);
-      const inserted = await env.DB.prepare('INSERT OR IGNORE INTO account VALUES (1,?,?,?)').bind(data.email, salt, hash).run();
+      const salt = random(16), hash = await hashPassword(data.password, salt);
+      const inserted = await env.DB.prepare('INSERT OR IGNORE INTO account(id,email,salt,hash) SELECT 1,?,?,? WHERE NOT EXISTS (SELECT 1 FROM account_deleted)').bind(data.email, salt, hash).run();
       if (!inserted.meta.changes) fail('个人账号已创建，请登录', 409);
-      return session(env, data.email, request, 201);
+      return session(env,{email:data.email,hash,nickname:'',avatar:'wave'},request,201);
     }
     // A fixed dummy salt also performs the expensive operation before setup.
-    const candidate = await passwordHash(data.password, account?.salt || 'dailyrep-not-yet-initialized');
+    const candidate = await hashPassword(data.password, account?.salt || 'dailyrep-not-yet-initialized');
     if (!account || !equal(candidate, account.hash) || account.email !== data.email) fail('邮箱或密码错误', 401);
-    return session(env, account.email, request);
+    return session(env, account, request);
   }
   const token = tokenOf(request);
   if (!/^[a-f0-9]{64}$/.test(token)) fail('请先登录', 401);
@@ -108,10 +103,10 @@ async function api(request, env) {
     const result=await handlePlanRoute(planStore(env.DB,true),route,method,body);
     if(result)return json(result.body,result.status);
   }
-  if (route === '/me' && method === 'GET') return json(await env.DB.prepare('SELECT email FROM account').first());
+  if (route === '/me' || route.startsWith('/account/')) return accountRoute(request,env,{route,tokenHash,limitAuth,passwordHash:hashPassword,ctx});
   if (route === '/logout' && method === 'POST') {
     await env.DB.prepare('DELETE FROM sessions WHERE token=?').bind(tokenHash).run();
-    return new Response(null, {status: 204, headers: {'Set-Cookie': 'dailyrep=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0; Secure'}});
+    return loggedOut(request);
   }
   if (route === '/records' && method === 'GET') return json((await env.DB.prepare('SELECT * FROM records ORDER BY occurredAt DESC').all()).results.map(hydrateRecord));
   if (route === '/records' && method === 'POST') {
@@ -144,7 +139,12 @@ async function api(request, env) {
     }
     const record = {id: random(16), ...data, photo};
     try { await env.DB.prepare('INSERT INTO records(id,sport,value,duration,occurredAt,photo,subtype,details,quantityUnit,planId) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(record.id, data.sport, data.value, data.duration, data.occurredAt, photo, data.subtype, data.details ? JSON.stringify(data.details) : null, data.quantityUnit, data.planId).run(); }
-    catch (e) { if (photo) await env.PHOTOS.delete(photo); throw e; }
+    catch (e) {
+      if(photo)try{await env.PHOTOS.delete(photo);}catch {
+        await env.DB.prepare('INSERT OR IGNORE INTO account_photo_cleanup(photo) VALUES (?)').bind(photo).run();
+      }
+      throw e;
+    }
     return json(record, 201);
   }
   if (route.startsWith('/photos/') && method === 'GET') {
@@ -180,17 +180,18 @@ async function api(request, env) {
   fail('接口不存在', 404);
 }
 export default {
-  async fetch(request, env) {
+  async scheduled(_event,env,ctx){ctx.waitUntil(drainDeletedPhotos(env));},
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
     const origin = request.headers.get('Origin');
     const allowed = origin === url.origin || (env.ALLOWED_ORIGIN && origin === env.ALLOWED_ORIGIN);
     const headers = {'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin'};
-    if (origin && allowed) Object.assign(headers, {'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Credentials':'true','Access-Control-Allow-Headers':'Content-Type, Authorization','Access-Control-Allow-Methods':'GET, POST, DELETE, OPTIONS','Vary':'Origin'});
+    if (origin && allowed) Object.assign(headers, {'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Credentials':'true','Access-Control-Allow-Headers':'Content-Type, Authorization, X-DailyRep-Client','Access-Control-Allow-Methods':'GET, POST, DELETE, OPTIONS','Vary':'Origin'});
     let response;
     try {
       if (origin && !allowed && request.method !== 'GET') fail('请求来源不受信任', 403);
-      response = request.method === 'OPTIONS' ? new Response(null, {status:204}) : await api(request, env);
+      response = request.method === 'OPTIONS' ? new Response(null, {status:204}) : await api(request, env, ctx);
     } catch (error) {
       if (!error.status) console.error('API failure', request.method, url.pathname, error.message);
       response = json({error: error.status ? error.message : '服务暂时不可用，请重试'}, error.status || 500);

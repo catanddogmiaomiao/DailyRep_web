@@ -18,6 +18,8 @@ test('Cloudflare runtime: single-owner signup, auth, R2 photos, records, real XL
     const plansSchema=await readFile(new URL('../migrations/0005_training_plans.sql',import.meta.url),'utf8');
     for(const sql of plansSchema.split(';').map(s=>s.trim()).filter(Boolean))await env.DB.prepare(sql).run();
     await env.DB.prepare((await readFile(new URL('../migrations/0006_widget_collections.sql',import.meta.url),'utf8')).trim().replace(/;$/, '')).run();
+    const accountMigration=await readFile(new URL('../migrations/0007_account_management.sql',import.meta.url),'utf8');
+    for(const sql of accountMigration.trim().split('\n'))await env.DB.prepare(sql.trim().replace(/;$/,'')).run();
     let token = '';
     const call = async (route, init={}) => {
       // Serialize with the same browser multipart encoder before crossing the
@@ -179,6 +181,20 @@ test('Cloudflare runtime: single-owner signup, auth, R2 photos, records, real XL
     for(let i=0;i<10;i++) await post('/login',{...owner,password:'wrong'},{'CF-Connecting-IP':'192.0.2.10'});
     assert.equal((await post('/login',owner,{'CF-Connecting-IP':'192.0.2.10'})).status,429);
     assert.equal((await call('/health')).status,200);
+    token=(await (await post('/login',owner)).json()).token;
+    const settings=await post('/account/profile',{nickname:'海边训练',avatar:'wave'});
+    assert.equal(settings.status,200,await settings.clone().text());
+    assert.equal((await settings.json()).nickname,'海边训练');
+    const devices=await (await call('/account/sessions')).json();
+    assert.equal(devices.find(d=>d.current).device,'网页或其他设备');
+    const newPhoto=await (await call('/records',{method:'POST',body:form})).json();
+    const deleted=await post('/account/delete',{confirmEmail:owner.email,currentPassword:owner.password});
+    assert.equal(deleted.status,204,await deleted.clone().text());
+    assert.equal((await call('/me')).status,401);
+    assert.equal((await (await call('/setup')).json()).registrationAvailable,false);
+    for(let i=0;i<30&&await env.PHOTOS.head(newPhoto.photo);i++)await new Promise(r=>setTimeout(r,50));
+    assert.equal(await env.PHOTOS.head(newPhoto.photo),null);
+
   } catch(e) { server.debug(); throw e; }
   finally {await server.close();}
 });

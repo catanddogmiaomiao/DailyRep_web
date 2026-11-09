@@ -1,0 +1,17 @@
+ALTER TABLE account ADD COLUMN nickname TEXT NOT NULL DEFAULT '';
+ALTER TABLE account ADD COLUMN avatar TEXT NOT NULL DEFAULT 'wave';
+ALTER TABLE account ADD COLUMN verifiedAt INTEGER;
+ALTER TABLE account ADD COLUMN recoveryHash TEXT;
+ALTER TABLE sessions ADD COLUMN publicId TEXT;
+ALTER TABLE sessions ADD COLUMN device TEXT NOT NULL DEFAULT '旧版设备';
+ALTER TABLE sessions ADD COLUMN createdAt INTEGER;
+UPDATE sessions SET publicId = lower(hex(randomblob(16))) WHERE publicId IS NULL;
+CREATE UNIQUE INDEX sessions_public_id ON sessions(publicId);
+CREATE TABLE account_email_codes (purpose TEXT PRIMARY KEY, email TEXT NOT NULL, hash TEXT NOT NULL, expires INTEGER NOT NULL, accountHash TEXT NOT NULL);
+CREATE TABLE account_deleted (id INTEGER PRIMARY KEY CHECK(id=1));
+CREATE TABLE account_photo_cleanup (photo TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS auth_attempts (key TEXT PRIMARY KEY, attempts INTEGER NOT NULL, expires INTEGER NOT NULL);
+CREATE TRIGGER account_deleted_no_records BEFORE INSERT ON records WHEN EXISTS (SELECT 1 FROM account_deleted) BEGIN SELECT RAISE(ABORT, 'account deleted'); END;
+CREATE TRIGGER account_deleted_no_plans BEFORE INSERT ON training_plans WHEN EXISTS (SELECT 1 FROM account_deleted) BEGIN SELECT RAISE(ABORT, 'account deleted'); END;
+CREATE TRIGGER account_deleted_no_widget_links BEFORE INSERT ON widget_links WHEN EXISTS (SELECT 1 FROM account_deleted) BEGIN SELECT RAISE(ABORT, 'account deleted'); END;
+CREATE TRIGGER account_deleted_no_widget_collections BEFORE INSERT ON widget_collections WHEN EXISTS (SELECT 1 FROM account_deleted) BEGIN SELECT RAISE(ABORT, 'account deleted'); END;
