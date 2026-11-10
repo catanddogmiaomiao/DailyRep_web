@@ -20,6 +20,8 @@ test('Cloudflare runtime: single-owner signup, auth, R2 photos, records, real XL
     await env.DB.prepare((await readFile(new URL('../migrations/0006_widget_collections.sql',import.meta.url),'utf8')).trim().replace(/;$/, '')).run();
     const accountMigration=await readFile(new URL('../migrations/0007_account_management.sql',import.meta.url),'utf8');
     for(const sql of accountMigration.trim().split('\n'))await env.DB.prepare(sql.trim().replace(/;$/,'')).run();
+    const weightMigration=await readFile(new URL('../migrations/0008_weight_and_avatar.sql',import.meta.url),'utf8');
+    for(const sql of weightMigration.split(';').map(s=>s.trim()).filter(Boolean))await env.DB.prepare(sql).run();
     let token = '';
     const call = async (route, init={}) => {
       // Serialize with the same browser multipart encoder before crossing the

@@ -10,11 +10,31 @@ const Password=({name='currentPassword',label='当前密码',fresh=false})=><Inp
 function NewPassword(){return <><Password name="newPassword" label="新密码（至少8位）" fresh/><Password name="confirmPassword" label="确认新密码" fresh/></>;}
 function match(d){if(d.newPassword!==d.confirmPassword)throw new Error('两次输入的密码不一致');}
 
+async function jpegAvatar(file) {
+  const url=URL.createObjectURL(file);
+  try {
+    const image=new Image();
+    image.src=url;
+    await image.decode();
+    const size=Math.min(image.naturalWidth,image.naturalHeight);
+    if(!size)throw new Error("无法读取图片");
+    const canvas=document.createElement("canvas");
+    canvas.width=canvas.height=240;
+    const context=canvas.getContext("2d");
+    context.fillStyle="#ffffff";
+    context.fillRect(0,0,240,240);
+    context.drawImage(image,(image.naturalWidth-size)/2,(image.naturalHeight-size)/2,size,size,0,0,240,240);
+    return canvas.toDataURL("image/jpeg",0.75).split(",")[1];
+  } catch {throw new Error("无法读取这张照片，请选择浏览器可打开的图片。");}
+  finally {URL.revokeObjectURL(url);}
+}
+
 export function Account({api,onClose,onUpdated,onSignedOut}) {
   const dialog=useRef(null), [profile,setProfile]=useState(null),[sessions,setSessions]=useState(null);
   const [panel,setPanel]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[code,setCode]=useState(''),[target,setTarget]=useState('');
   const [avatar,setAvatar]=useState('wave');
-  const refresh=async()=>{const data=await api('/me');setProfile(data);setAvatar(data.avatar||'wave');onUpdated(data);};
+  const update=data=>{setProfile(data);setAvatar(data.avatar||'wave');onUpdated(data);};
+  const refresh=async()=>update(await api('/me'));
   const run=async task=>{if(busy)return;setBusy(true);setError('');setNotice('');try{await task();}catch(e){if(e.status===401)onSignedOut();else setError(e.message);}finally{setBusy(false);}};
   useEffect(()=>{dialog.current.showModal();void run(refresh);},[]);
   const open=key=>{setPanel(key);setError('');setNotice('');setCode('');setTarget('');setAvatar(profile.avatar||'wave');if(key==='sessions')void run(async()=>setSessions(await api('/account/sessions')));};
@@ -23,7 +43,7 @@ export function Account({api,onClose,onUpdated,onSignedOut}) {
   const revoke=id=>void run(async()=>{await send(api,'/account/sessions/revoke',{id});setSessions(await api('/account/sessions'));setNotice('已退出所选设备。');});
   return <dialog ref={dialog} className="modal account-modal" onCancel={e=>{e.preventDefault();if(!busy)onClose();}}>
     <div className="modal-heading"><h2>账号管理</h2><button type="button" className="icon" aria-label="关闭账号管理" onClick={onClose} disabled={busy}><X/></button></div>
-    {profile&&<div className="account-summary"><span>{avatars[profile.avatar]||<UserRound/>}</span><div><strong>{profile.nickname||'我的账号'}</strong><div>{profile.email}</div><small>{profile.emailVerified?'邮箱已验证':'邮箱未验证'}</small></div></div>}
+    {profile&&<div className="account-summary"><span>{profile.avatarImage?<img className="uploaded-avatar" src={"data:image/jpeg;base64,"+profile.avatarImage} alt=""/>:avatars[profile.avatar]||<UserRound/>}</span><div><strong>{profile.nickname||'我的账号'}</strong><div>{profile.email}</div><small>{profile.emailVerified?'邮箱已验证':'邮箱未验证'}</small></div></div>}
     {profile&&!panel&&<div className="account-menu">
       {Object.entries({profile:'昵称与头像',password:'修改密码',email:'验证或更换邮箱',sessions:'已登录设备',recovery:'密码恢复码',delete:'删除账号'}).map(([key,label])=><button className="outline" key={key} disabled={busy} onClick={()=>open(key)}>{label}</button>)}
       <button className="outline" disabled={busy} onClick={logout}>退出登录</button>
@@ -31,6 +51,14 @@ export function Account({api,onClose,onUpdated,onSignedOut}) {
     {panel&&<button type="button" className="auth-switch" disabled={busy} onClick={()=>open('')}>‹ 返回账号管理</button>}
     {panel==='profile'&&<form onSubmit={submit(async d=>{await send(api,'/account/profile',{nickname:d.nickname,avatar});await refresh();setNotice('资料已保存。');},{clear:false})}>
       <label>昵称<input name="nickname" maxLength={24} defaultValue={profile.nickname} placeholder="可留空"/></label>
+      <label>上传头像<input type="file" accept="image/*" disabled={busy} onChange={e=>{
+        const file=e.target.files?.[0];
+        e.target.value="";
+        if(file)void run(async()=>{update(await send(api,"/account/avatar",{image:await jpegAvatar(file)}));setNotice("头像已更新。");});
+      }}/></label>
+      {profile.avatarImage&&<button type="button" className="outline" disabled={busy} onClick={()=>void run(async()=>{
+        update(await send(api,"/account/avatar",{image:null}));setNotice("已恢复预设头像。");
+      })}>移除上传的头像</button>}
       <div className="account-avatars" aria-label="选择头像">{Object.entries(avatars).map(([key,value])=><button type="button" key={key} className="outline" aria-label={{wave:'海浪',sun:'太阳',mountain:'山峰',bolt:'闪电'}[key]} aria-pressed={avatar===key} onClick={()=>setAvatar(key)}>{value}</button>)}</div>
       <button className="gold" disabled={busy}>保存资料</button>
     </form>}

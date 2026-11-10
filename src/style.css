@@ -1035,3 +1035,22 @@ footer {
 .account-modal form input { border:1px solid #e8dcc849; border-radius:10px; color:#e8dcc8; background:#101b2d; padding:10px 12px; min-height:44px; width:100%; font:inherit; }
 .account-modal .auth-switch { min-height:44px; text-align:left; }
 .account button[aria-label="账号管理"] { min-width:44px; min-height:44px; }
+
+.uploaded-avatar { width:34px; height:34px; border-radius:50%; object-fit:cover; display:block; }
+.account-summary .uploaded-avatar { width:56px; height:56px; }
+.weight-card { margin:22px 0; padding:20px; border:1px solid #e8dcc82a; border-radius:18px; background:#23324b; }
+.weight-card form { display:flex; gap:10px; align-items:end; flex-wrap:wrap; }
+.weight-card label { display:grid; gap:6px; }
+.weight-card input { min-height:44px; width:145px; padding:8px 12px; border-radius:9px; border:1px solid #e8dcc849; background:#132138; color:#e8dcc8; font:inherit; }
+.weight-card details { margin-top:14px; }
+.weight-card summary { cursor:pointer; }
+.weight-card ul { list-style:none; padding:0; }
+.weight-card li { display:flex; justify-content:space-between; padding:6px 0; max-width:320px; }
+
+.weight-card > summary,.weight-trend-dates { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.weight-card > summary { min-height:44px; margin:0; }
+.weight-heading { font-size:20px; font-weight:700; }
+.weight-card > summary span:last-child { color:#e5c979; font-size:14px; }
+.weight-trend { margin:16px 0; max-width:480px; }
+.weight-trend svg { display:block; width:100%; }
+.weight-trend-dates { color:#aab4c6; font-size:13px; }

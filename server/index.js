@@ -40,6 +40,13 @@ if(!db.prepare("PRAGMA table_info(account)").all().some(column=>column.name==="n
     db.exec("COMMIT");
   } catch(error){db.exec("ROLLBACK");throw error;}
 }
+if(!db.prepare("PRAGMA table_info(account)").all().some(column=>column.name==="avatarImage")){
+  db.exec("BEGIN");
+  try {
+    db.exec(readFileSync(new URL("../migrations/0008_weight_and_avatar.sql",import.meta.url),"utf8"));
+    db.exec("COMMIT");
+  } catch(error){db.exec("ROLLBACK");throw error;}
+}
 if (!db.prepare("SELECT id FROM account UNION ALL SELECT id FROM account_deleted").get()) {
   const email = process.env.OWNER_EMAIL?.trim().toLowerCase(),
     password = process.env.OWNER_PASSWORD;
@@ -63,6 +70,7 @@ app.use(
     },
   }),
 );
+app.use("/api/account/avatar",express.json({limit:"100kb"}));
 app.use(express.json({ limit: "16kb" }));
 app.use("/api", (req, res, next) => {
   res.set("Cache-Control", "no-store");

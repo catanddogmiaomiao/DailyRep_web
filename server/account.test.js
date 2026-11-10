@@ -14,7 +14,7 @@ function setup(t){
   const call=(route,{data,token,ip='test',headers={}}={})=>worker.fetch(new Request('https://dailyrep.test/api'+route,{
     method:data===undefined?'GET':'POST',headers:{'CF-Connecting-IP':ip,...(token?{Authorization:'Bearer '+token}:{}),...headers},body:data===undefined?undefined:JSON.stringify(data),
   }),env,{waitUntil:p=>pending.push(p)});
-  const migrate=()=>db.exec(readFileSync(new URL('0007_account_management.sql',dir),'utf8'));
+  const migrate=()=>{for(const file of ['0007_account_management.sql','0008_weight_and_avatar.sql'])db.exec(readFileSync(new URL(file,dir),'utf8'));};
   const get=async(p,options,status=200)=>{const response=await call(p,options);assert.equal(response.status,status,await response.clone().text());return status===204?null:response.json();};
   t.after(async()=>{await Promise.all(pending);db.close();});
   return {env,db,photos,pending,get,migrate};
@@ -95,4 +95,28 @@ test('email verification and recovery codes are single use; deletion removes dat
   await drainDeletedPhotos(env);
   assert.equal(photos.size,0);
   assert.equal(db.prepare('SELECT count(*) AS n FROM account_photo_cleanup').get().n,0);
+});
+
+test('weight records replace the same local day and uploaded avatars are private and removable',async t=>{
+  const {db,get,migrate}=setup(t);
+  migrate();
+  const owner={email:'owner@example.com',password:'password123',setupCode:'invite'};
+  const {token}=await get('/register',{data:owner},201);
+  const day='2026-11-10';
+  await get('/account/weight',{},401);
+  await get('/account/weight',{token,data:{day:'2026-02-30',kg:70}},400);
+  await get('/account/weight',{token,data:{day,kg:0}},400);
+  assert.deepEqual(await get('/account/weight',{token,data:{day,kg:70.125}}),{day,kg:70.125});
+  assert.deepEqual(await get('/account/weight',{token,data:{day,kg:70.25}}),{day,kg:70.25});
+  assert.deepEqual(await get('/account/weight',{token}),[{day,kg:70.25}]);
+
+  const avatar=readFileSync(new URL('../public/coast.jpg',import.meta.url)).toString('base64');
+  await get('/account/avatar',{token,data:{image:'bad'}},400);
+  await get('/account/avatar',{data:{image:avatar}},401);
+  assert.equal((await get('/account/avatar',{token,data:{image:avatar}})).avatarImage,avatar);
+  const other=(await get('/login',{data:owner})).token;
+  assert.equal((await get('/me',{token:other})).avatarImage,avatar);
+  assert.equal((await get('/account/avatar',{token,data:{image:null}})).avatarImage,null);
+  await get('/account/delete',{token,data:{currentPassword:owner.password,confirmEmail:owner.email}},204);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM weight_entries').get().n,0);
 });

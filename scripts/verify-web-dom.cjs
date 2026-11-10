@@ -11,6 +11,7 @@ const {buildSync}=require('esbuild');
  w.HTMLAnchorElement.prototype.click=function(){downloads.push({href:this.href,name:this.download,attached:this.isConnected});};
  w.fetch=async url=>{
   if(url==='/api/me')return {ok:true,json:async()=>({email:'test@example.com'})};
+  if(url==='/api/account/weight')return {ok:true,json:async()=>[]};
   if(url==='/api/account/sessions')return {ok:true,json:async()=>[{id:'test-session',device:'网页 · Mac',current:true}]};
   if(url==='/api/records'||url==='/api/plans')return {ok:true,json:async()=>[]};
   if(url.startsWith('/api/export?'))return fail?{ok:false,json:async()=>({error:'请重新登录'})}:{ok:true,blob:async()=>new Blob(['test export'])};

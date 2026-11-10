@@ -14,16 +14,16 @@ const avatarOptions=['wave','sun','mountain','bolt'];
 const pwd = value => typeof value==='string' && value.length>0 && value.length<=1024;
 const emailAddress = value => typeof value==='string' && value.length<=254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()) ? value.trim().toLowerCase() : null;
 const emailEnabled = env => !!(env.RESEND_API_KEY && env.ACCOUNT_EMAIL_FROM);
-const profile = (account,env) => ({email:account.email,nickname:account.nickname,avatar:account.avatar,emailVerified:!!account.verifiedAt,emailAvailable:emailEnabled(env),hasRecoveryCode:!!account.recoveryHash});
+const profile = (account,env) => ({email:account.email,nickname:account.nickname,avatar:account.avatar,avatarImage:account.avatarImage||null,emailVerified:!!account.verifiedAt,emailAvailable:emailEnabled(env),hasRecoveryCode:!!account.recoveryHash});
 const usedCode = '验证码不正确或已失效，请重新获取';
 const newPassword = value => {if(!pwd(value)||value.length<8) fail('密码须为8至1024位',400);return value;};
-export async function accountBody(request) {
+export async function accountBody(request, maxBytes = 16384) {
   const reader=request.body?.getReader(), chunks=[];let length=0;
   if(!reader) fail('请填写所需信息',400);
   for(;;) {
     const {done,value}=await reader.read(); if(done)break;
     length+=value.byteLength;
-    if(length>16384){await reader.cancel();fail('请求内容过大',413);}
+    if(length>maxBytes){await reader.cancel();fail('请求内容过大',413);}
     chunks.push(value);
   }
   let data;
@@ -89,6 +89,10 @@ export async function accountRoute(request,env,{route,tokenHash,limitAuth,passwo
   }
   if(!account)fail('请先登录',401);
   if(route==='/me' && method==='GET')return json(profile(account,env));
+  if(route==='/account/weight' && method==='GET'){
+    const {results}=await q('SELECT day, grams / 1000.0 AS kg FROM weight_entries ORDER BY day DESC LIMIT 90').all();
+    return json(results);
+  }
   if(route==='/account/sessions' && method==='GET'){
     // A legacy session may have been created between the schema migration and deployment.
     await q('UPDATE sessions SET publicId=lower(hex(randomblob(16))) WHERE publicId IS NULL').run();
@@ -106,14 +110,39 @@ export async function accountRoute(request,env,{route,tokenHash,limitAuth,passwo
     }
     return new Response(null,{status:204});
   }
-  const data=await accountBody(request);
+  const data=await accountBody(request,route==='/account/avatar'?100000:16384);
   const active='EXISTS (SELECT 1 FROM sessions WHERE token=? AND expires>?)';
+  if(route==='/account/weight'){
+    const {day,kg}=data;
+    const date=typeof day==='string' && /^\d{4}-\d{2}-\d{2}$/.test(day) ? new Date(day+'T00:00:00Z') : null;
+    if(!date || !Number.isFinite(date.getTime()) || date.toISOString().slice(0,10)!==day)
+      fail('请选择有效的打卡日期',400);
+    if(typeof kg!=='number'||!Number.isFinite(kg)||kg<1||kg>1000)
+      fail('请输入 1 到 1000 公斤之间的体重',400);
+    const grams=Math.round(kg*1000);
+    const result=await q('INSERT INTO weight_entries(day,grams) SELECT ?,? WHERE '+active+' ON CONFLICT(day) DO UPDATE SET grams=excluded.grams',day,grams,tokenHash,Date.now()).run();
+    if(!result.meta.changes)fail('请先登录',401);
+    return json({day,kg:grams/1000});
+  }
+  if(route==='/account/avatar'){
+    const {image}=data;
+    if(image!==null){
+      if(typeof image!=='string'||image.length>98304||!image.startsWith('/9j/')||!/^[A-Za-z0-9+/]+={0,2}$/.test(image))
+        fail('请选择有效的 JPEG 头像',400);
+      let bytes;
+      try {bytes=atob(image);}catch{fail('请选择有效的 JPEG 头像',400);}
+      if(bytes.length<16||!bytes.endsWith('\xff\xd9'))fail('请选择有效的 JPEG 头像',400);
+    }
+    const result=await q('UPDATE account SET avatarImage=? WHERE id=1 AND '+active,image,tokenHash,Date.now()).run();
+    if(!result.meta.changes)fail('请先登录',401);
+    return json(profile(await q('SELECT * FROM account').first(),env));
+  }
   if(route==='/account/profile'){
     const nickname=typeof data.nickname==='string'?data.nickname.trim():null;
     if(nickname===null||[...nickname].length>24||/[\x00-\x1f\x7f]/.test(nickname)||!avatarOptions.includes(data.avatar))fail('昵称最多24个字符，请选择有效头像',400);
     const result=await q('UPDATE account SET nickname=?,avatar=? WHERE id=1 AND '+active,nickname,data.avatar,tokenHash,Date.now()).run();
     if(!result.meta.changes)fail('请先登录',401);
-    return json(profile({...account,nickname,avatar:data.avatar},env));
+    return json(profile(await q('SELECT * FROM account').first(),env));
   }
   await limitAuth(request,env,'account');
   if(!pwd(data.currentPassword)||!equal(await passwordHash(data.currentPassword,account.salt),account.hash))fail('当前密码不正确',400);
@@ -165,7 +194,7 @@ export async function accountRoute(request,env,{route,tokenHash,limitAuth,passwo
       q('UPDATE account SET hash=? WHERE id=1 AND hash=? AND email=? AND '+active,marker,account.hash,account.email,tokenHash,Date.now()),
       q('INSERT OR IGNORE INTO account_deleted(id) SELECT 1 WHERE '+deleted,marker),
       q('INSERT OR IGNORE INTO account_photo_cleanup(photo) SELECT photo FROM records WHERE photo IS NOT NULL AND '+deleted,marker),
-      ...['widget_links','widget_collections','records','training_plans','account_email_codes','sessions'].map(table=>q('DELETE FROM '+table+' WHERE '+deleted,marker)),
+      ...['widget_links','widget_collections','records','training_plans','account_email_codes','weight_entries','sessions'].map(table=>q('DELETE FROM '+table+' WHERE '+deleted,marker)),
       q('DELETE FROM account WHERE hash=?',marker),
     ]);
     if(!results[0].meta.changes)fail('账号已变更，请重新登录',409);

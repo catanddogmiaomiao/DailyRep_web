@@ -1,0 +1,5 @@
+ALTER TABLE account ADD COLUMN avatarImage TEXT;
+CREATE TABLE weight_entries (
+  day TEXT PRIMARY KEY,
+  grams INTEGER NOT NULL CHECK (grams BETWEEN 1000 AND 1000000)
+);

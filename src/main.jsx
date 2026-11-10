@@ -20,6 +20,7 @@ import {
   Clock,
   Check,
 } from "lucide-react";
+import {WeightCard} from "./WeightCard.jsx";
 import {Account,ResetForm} from "./Account.jsx";
 import {PlansPanel, PlanSummary} from "./PlansPanel.jsx";
 import {dateInZone,isDue,matchesPlan,planProgress} from "./plans.js";
@@ -117,6 +118,8 @@ function App() {
       <Login
         onLogin={(u) => {
           setUser(u);
+          const version=generation.current;
+          api("/me").then(profile=>{if(version===generation.current)setUser(profile);}).catch(()=>{});
           setError("");
           load();
         }}
@@ -186,7 +189,7 @@ function App() {
             {user.nickname || "私人空间"}<small>{user.email}</small>
           </span>
           <button title="账号管理" aria-label="账号管理" onClick={()=>setAccountVisible(true)}>
-            <UserRound size={20} />
+            {user.avatarImage?<img className="uploaded-avatar" src={"data:image/jpeg;base64,"+user.avatarImage} alt=""/>:<UserRound size={20} />}
           </button>
         </div>
       </aside>
@@ -242,6 +245,7 @@ function App() {
                 <Waves size={96} strokeWidth={0.8} />
               </div>
             </section>
+            <WeightCard api={api}/>
             <div className="section-heading">
               <h2>选择今天的运动</h2>
               <span>从一次打卡开始</span>
