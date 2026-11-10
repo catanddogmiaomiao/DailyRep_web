@@ -76,3 +76,27 @@ export function movePeriod(anchor, period, offset) {
   } else d.setFullYear(d.getFullYear() + offset);
   return d;
 }
+
+export function weeklyOverview(records, sports, now = new Date()) {
+  const reports = sports.map(sport => ({sport, ...report(records, sport, "week", now)}));
+  const rows = reports.flatMap(item => item.rows);
+  const end = new Date(reports[0].end);
+  end.setDate(end.getDate() - 1);
+  return {
+    reports,
+    start: reports[0].start,
+    end,
+    count: rows.length,
+    days: new Set(rows.map(row => new Date(row.occurredAt).toDateString())).size,
+    duration: reports.reduce((sum, item) => sum + item.duration, 0),
+  };
+}
+
+export function formatTrainingDuration(seconds) {
+  if (seconds === 0) return "0 分钟";
+  if (seconds < 60) return `${seconds} 秒`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} 分钟`;
+  const remaining = minutes % 60;
+  return `${Math.floor(minutes / 60)} 小时${remaining ? ` ${remaining} 分钟` : ""}`;
+}

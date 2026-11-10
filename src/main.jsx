@@ -24,7 +24,7 @@ import {WeightCard} from "./WeightCard.jsx";
 import {Account,ResetForm} from "./Account.jsx";
 import {PlansPanel, PlanSummary} from "./PlansPanel.jsx";
 import {dateInZone,isDue,matchesPlan,planProgress} from "./plans.js";
-import { report, movePeriod } from "./stats";
+import { report, movePeriod, weeklyOverview, formatTrainingDuration } from "./stats";
 import {subtypeOptions, subtypeLabel, matchesSubtype, recordDetails, projectRecord, recordUnit, formatSets} from "./subtypes.js";
 import "./style.css";
 const sports = {
@@ -126,6 +126,7 @@ function App() {
         error={error}
       />
     );
+  const weekly=page==="home"||page==="week-overview"?weeklyOverview(records,Object.keys(sports)):null;
   const selected = sports[page],
     stats = selected ? report(records.filter(r=>matchesPlan(r,planFilter)), page, period, anchor, subtype) : null;
   async function exportFile() {
@@ -199,9 +200,9 @@ function App() {
           <div className="eyebrow">YOUR EVERYDAY, A LITTLE STRONGER</div>
           <div className="header-line">
             <div>
-              <h1>{selected ? selected.name + "报告" : "今天，也向前一步"}</h1>
+              <h1>{page==="week-overview"?"本周统计":selected?selected.name+"报告":"今天，也向前一步"}</h1>
               <p>
-                {selected
+                {page==="week-overview"?`${dateLabel(weekly.start)} – ${dateLabel(weekly.end)}`:selected
                   ? "让每一份坚持，都清晰可见。"
                   : "每一次运动，都是靠近更好的自己。"}
               </p>
@@ -224,35 +225,40 @@ function App() {
           </div>
         )}
         {loading && <p role="status">正在同步运动记录…</p>}
-        {!selected ? (
+        {page==="week-overview" ? (
           <>
-            <section className="home-summary beige">
-              <div>
-                <span>本周打卡</span>
-                <strong>
-                  {
-                    records.filter(
-                      (r) =>
-                        new Date(r.occurredAt) >=
-                        report([], "running", "week").start,
-                    ).length
-                  }
-                  <small>次</small>
-                </strong>
-                <p>把今天的努力，留给未来的自己。</p>
-              </div>
-              <div className="summary-art">
-                <Waves size={96} strokeWidth={0.8} />
-              </div>
+            <button className="outline weekly-back" onClick={()=>go("home")}><ChevronLeft size={18}/> 返回首页</button>
+            <div className="weekly-overview beige">
+              <strong>{weekly.count} 次打卡</strong>
+              <span>运动 {weekly.days} 天 · {formatTrainingDuration(weekly.duration)}</span>
+            </div>
+            <section className="weekly-sports" aria-label="各项目的本周统计">
+              {weekly.reports.map(item=>{
+                const sport=sports[item.sport];
+                return <button className="weekly-sport" key={item.sport} onClick={()=>go(item.sport)}>
+                  <sport.icon size={23} aria-hidden="true"/>
+                  <span><strong>{sport.name}</strong><small>{item.rows.length===0?"本周未打卡":
+                    `${item.rows.length} 次打卡 · ${item.legacyCount===item.rows.length?"":fmt(item.total)+" "+sport.unit+" · "}${formatTrainingDuration(item.duration)}`}</small></span>
+                  <ChevronRight size={18} aria-hidden="true"/>
+                </button>;
+              })}
             </section>
+          </>
+        ) : !selected ? (
+          <>
+            <button className="weekly-overview beige" onClick={()=>go("week-overview")} aria-label={`本周打卡 ${weekly.count} 次，查看本周统计`}>
+              <span><strong>本周打卡 {weekly.count} 次</strong><small>运动 {weekly.days} 天 · {formatTrainingDuration(weekly.duration)}</small></span>
+              <ChevronRight size={21} aria-hidden="true"/>
+            </button>
             <WeightCard api={api}/>
             <div className="section-heading">
               <h2>选择今天的运动</h2>
               <span>从一次打卡开始</span>
             </div>
             <section className="sport-grid">
-              {Object.entries(sports).map(([key, s]) => {
-                const stat = report(records, key, "week");
+              {weekly.reports.map(stat => {
+                const key=stat.sport;
+                const s=sports[key];
                 return (
                   <button
                     className="sport-card"

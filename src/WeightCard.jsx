@@ -70,7 +70,13 @@ export function WeightCard({api}) {
   }
 
   return <details className="weight-card">
-    <summary><span className="weight-heading">体重记录</span><span>查看趋势 ›</span></summary>
+    <summary>
+      <span className="weight-heading">体重记录</span>
+      <span className="weight-summary">
+        <strong>{today ? `今日 ${today.kg} kg` : entries ? "今日未记录" : error ? "暂无法读取" : "读取中…"}</strong>
+        <span aria-hidden="true">›</span>
+      </span>
+    </summary>
     {!!entries?.length&&<Trend entries={entries}/>}
     <h3>今日体重</h3>
     <p>{today ? `今日 ${today.kg} kg` : entries ? "今天还没有记录" : error ? "暂时无法读取体重记录" : "正在读取体重记录…"}</p>

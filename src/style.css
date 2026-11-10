@@ -1050,7 +1050,17 @@ footer {
 .weight-card > summary,.weight-trend-dates { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .weight-card > summary { min-height:44px; margin:0; }
 .weight-heading { font-size:20px; font-weight:700; }
-.weight-card > summary span:last-child { color:#e5c979; font-size:14px; }
+.weight-summary { display:flex; gap:8px; align-items:center; color:#e5c979; font-size:14px; font-variant-numeric:tabular-nums; }
 .weight-trend { margin:16px 0; max-width:480px; }
 .weight-trend svg { display:block; width:100%; }
 .weight-trend-dates { color:#aab4c6; font-size:13px; }
+
+.weekly-overview { width:100%; display:flex; align-items:center; justify-content:space-between; gap:12px; text-align:left; padding:12px 18px; }
+.weekly-overview strong { display:block; margin:0; font-size:19px; letter-spacing:0; }
+.weekly-overview small { display:block; margin:3px 0 0; font-size:14px; }
+.weekly-back { margin-bottom:12px; }
+.weekly-sports { display:grid; gap:10px; margin-top:16px; }
+.weekly-sport { display:flex; gap:12px; align-items:center; text-align:left; background:#23324b; border:1px solid #e8dcc82a; border-radius:14px; padding:14px 16px; color:#e8dcc8; }
+.weekly-sport span { flex:1; }
+.weekly-sport small { display:block; margin-top:4px; color:#aab4c6; }
+.weekly-sport > svg { color:#c6a75e; flex-shrink:0; }

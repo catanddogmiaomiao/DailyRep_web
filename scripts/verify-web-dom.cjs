@@ -9,11 +9,18 @@ const {buildSync}=require('esbuild');
  w.scrollTo=()=>{};w.AbortSignal=AbortSignal;
  w.URL.createObjectURL=()=>`blob:test-${++urls}`;w.URL.revokeObjectURL=url=>revoked.push(url);
  w.HTMLAnchorElement.prototype.click=function(){downloads.push({href:this.href,name:this.download,attached:this.isConnected});};
+ const now=new Date();
+ const today=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
+ const nextWeek=new Date(now);nextWeek.setDate(nextWeek.getDate()+7);
  w.fetch=async url=>{
   if(url==='/api/me')return {ok:true,json:async()=>({email:'test@example.com'})};
-  if(url==='/api/account/weight')return {ok:true,json:async()=>[]};
+  if(url==='/api/account/weight')return {ok:true,json:async()=>[{day:today,kg:68.2}]};
   if(url==='/api/account/sessions')return {ok:true,json:async()=>[{id:'test-session',device:'网页 · Mac',current:true}]};
-  if(url==='/api/records'||url==='/api/plans')return {ok:true,json:async()=>[]};
+  if(url==='/api/plans')return {ok:true,json:async()=>[]};
+  if(url==='/api/records')return {ok:true,json:async()=>[
+    {id:'current',sport:'running',value:3,duration:1800,occurredAt:now.toISOString()},
+    {id:'later',sport:'running',value:9,duration:3600,occurredAt:nextWeek.toISOString()},
+  ]};
   if(url.startsWith('/api/export?'))return fail?{ok:false,json:async()=>({error:'请重新登录'})}:{ok:true,blob:async()=>new Blob(['test export'])};
   throw Error('Unexpected API '+url);
  };
@@ -28,7 +35,14 @@ const {buildSync}=require('esbuild');
  await wait(()=>w.document.querySelector('.account-session')?.textContent.includes('网页 · Mac（当前）'));
  w.document.querySelector('[aria-label="关闭账号管理"]').click();
  await wait(()=>!w.document.querySelector('dialog'));
- [...w.document.querySelectorAll('aside button')].find(b=>b.textContent==='跑步').click();
+ await wait(()=>w.document.querySelector('.weight-summary')?.textContent.includes('今日 68.2 kg'));
+ const weeklyCard=w.document.querySelector('button.weekly-overview');
+ assert.match(weeklyCard.textContent,/本周打卡 1 次/);
+ weeklyCard.click();
+ await wait(()=>w.document.querySelector('h1')?.textContent==='本周统计');
+ const running=w.document.querySelector('.weekly-sport');
+ assert.match(running.textContent,/跑步.*1 次打卡.*3 km.*30 分钟/);
+ running.click();
  await wait(()=>w.document.querySelector('.period'));
  for(const [label,count] of [['月',new Date(new Date().getFullYear(),new Date().getMonth()+1,0).getDate()],['年',12],['周',7]]){
   [...w.document.querySelectorAll('.period button')].find(b=>b.textContent===label).click();
@@ -43,5 +57,5 @@ const {buildSync}=require('esbuild');
  assert.equal(revoked.length,0,'download must remain usable until replaced or leaving the report');
  fail=true;exportButton().click();await wait(()=>w.document.querySelector('[role=alert]')?.textContent.includes('请重新登录'));
  [...w.document.querySelectorAll('aside button')].find(b=>b.textContent==='游泳').click();await wait(()=>revoked.length===1);
- dom.window.close();console.log('PASS: month/year/week changes, attached download link, persistent fallback, export errors and URL cleanup');
+ dom.window.close();console.log('PASS: today’s weight, weekly overview and sport drill-down, month/year/week changes, attached download link, persistent fallback, export errors and URL cleanup');
 })().catch(e=>{console.error(e);process.exitCode=1;});
